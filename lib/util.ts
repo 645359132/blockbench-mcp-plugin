@@ -1,3 +1,5 @@
+import { workspaceManager } from "@/lib/workspaces";
+
 /**
  * Helper function to create properly formatted image content for MCP responses.
  * Handles data URLs, base64 strings, and objects with url property.
@@ -288,13 +290,15 @@ export function captureScreenshot(project?: string) {
 
   if (!selectedProject || project !== undefined) {
     selectedProject = ModelProject.all.find(
-      (p) => p.name === project || p.uuid === project || p.selected
+      (p) => project === undefined ? p.selected : p.name === project || p.uuid === project
     );
   }
 
   if (!selectedProject) {
     throw new Error("No project found in the Blockbench editor.");
   }
+
+  workspaceManager.assertProjectAccess(selectedProject.uuid);
 
   // Select the project if needed
   if (!selectedProject.selected) {

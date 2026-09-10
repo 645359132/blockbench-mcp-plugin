@@ -42,14 +42,16 @@ export interface Session {
 }
 
 type SessionListener = (sessions: Session[]) => void;
-type RemovalCallback = (sessionId: string) => void;
+type RemovalCallback = (sessionId: string) => void | Promise<void>;
 type PingCallback = (sessionId: string) => Promise<boolean>;
 
-class SessionManager {
+export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private listeners: Set<SessionListener> = new Set();
   private removalCallback: RemovalCallback | null = null;
   private pingCallback: PingCallback | null = null;
+  private pendingRemovals = new Set<Promise<void>>();
+  private activeRequests = new Map<string, number>();
   private config: SessionConfig = {
     inactivityTimeoutMs: DEFAULT_INACTIVITY_TIMEOUT_MS,
     pingIntervalMs: DEFAULT_PING_INTERVAL_MS,
@@ -101,6 +103,7 @@ class SessionManager {
     // Delete from map FIRST to prevent re-entrancy issues
     // (e.g., if removalCallback triggers onsessionclosed which calls remove() again)
     this.sessions.delete(sessionId);
+    this.activeRequests.delete(sessionId);
     this.notifyListeners();
 
     console.log(`[MCP] Session disconnected: ${sessionId.slice(0, 8)}...`);
@@ -108,7 +111,11 @@ class SessionManager {
     // Notify removal callback (e.g., to close transport) after removing from map
     if (this.removalCallback) {
       try {
-        this.removalCallback(sessionId);
+        const removal = Promise.resolve(this.removalCallback(sessionId)).catch((error) => {
+          console.error("[MCP] Session removal callback error:", error);
+        });
+        this.pendingRemovals.add(removal);
+        void removal.finally(() => this.pendingRemovals.delete(removal));
       } catch (error) {
         console.error("[MCP] Session removal callback error:", error);
       }
@@ -122,6 +129,28 @@ class SessionManager {
       session.failedPings = 0; // Reset failed pings on activity
       this.resetTimeout(session);
     }
+  }
+
+  /** Keep a session alive while a request is executing, including queued tools. */
+  beginActivity(sessionId: string): () => void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return () => {};
+    this.activeRequests.set(sessionId, (this.activeRequests.get(sessionId) ?? 0) + 1);
+    this.updateActivity(sessionId);
+    let ended = false;
+    return () => {
+      if (ended || this.sessions.get(sessionId) !== session) return;
+      ended = true;
+      this.endActivity(sessionId);
+    };
+  }
+
+  endActivity(sessionId: string): void {
+    if (!this.sessions.has(sessionId)) return;
+    const count = (this.activeRequests.get(sessionId) ?? 1) - 1;
+    if (count > 0) this.activeRequests.set(sessionId, count);
+    else this.activeRequests.delete(sessionId);
+    this.updateActivity(sessionId);
   }
 
   /**
@@ -145,8 +174,6 @@ class SessionManager {
     if (session) {
       session.lastPongAt = new Date();
       session.failedPings = 0;
-      // Reset inactivity timeout — a pong confirms the client is alive
-      this.resetTimeout(session);
     }
   }
 
@@ -200,7 +227,9 @@ class SessionManager {
   private resetTimeout(session: Session): void {
     if (session.timeoutHandle) {
       clearTimeout(session.timeoutHandle);
+      session.timeoutHandle = undefined;
     }
+    if (this.activeRequests.has(session.id)) return;
     session.timeoutHandle = setTimeout(() => {
       console.log(`[MCP] Session timed out: ${session.id.slice(0, 8)}...`);
       this.remove(session.id);
@@ -211,20 +240,26 @@ class SessionManager {
     // Don't start ping if interval is 0 (disabled) or no callback
     if (this.config.pingIntervalMs <= 0) return;
 
+    let pending = false;
     session.pingHandle = setInterval(async () => {
-      if (!this.pingCallback) return;
+      if (!this.pingCallback || pending) return;
 
+      pending = true;
       this.recordPingSent(session.id);
       try {
         const success = await this.pingCallback(session.id);
+        if (this.sessions.get(session.id) !== session) return;
         if (success) {
           this.recordPongReceived(session.id);
         } else {
           this.recordPingFailed(session.id);
         }
       } catch (error) {
+        if (this.sessions.get(session.id) !== session) return;
         console.error(`[MCP] Ping error for session ${session.id.slice(0, 8)}...:`, error);
         this.recordPingFailed(session.id);
+      } finally {
+        pending = false;
       }
     }, this.config.pingIntervalMs);
   }
@@ -282,14 +317,12 @@ class SessionManager {
   /**
    * Clears all sessions and timeouts. Used during plugin unload.
    */
-  clear(): void {
-    for (const session of this.sessions.values()) {
-      this.clearSessionTimers(session);
-    }
-    this.sessions.clear();
+  async clear(): Promise<void> {
+    for (const sessionId of [...this.sessions.keys()]) this.remove(sessionId);
     this.listeners.clear();
     this.pingCallback = null;
     this.removalCallback = null;
+    await Promise.all(this.pendingRemovals);
   }
 }
 

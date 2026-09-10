@@ -201,7 +201,7 @@ export function registerExportTools() {
           ? codec.getExportOptions()
           : undefined);
 
-      const rawResult = codec.compile(effectiveOptions);
+      const rawResult = await codec.compile(effectiveOptions);
 
       const isArrayBuffer = rawResult instanceof ArrayBuffer;
       const isBinaryView =

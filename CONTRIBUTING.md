@@ -20,9 +20,22 @@ For MCP Inspector (optional):
 ```sh
 bunx @modelcontextprotocol/inspector
 ```
-Default server transport (when plugin is loaded): `http://localhost:3000/bb-mcp`.
+Default server transport (when plugin is loaded): `http://127.0.0.1:3000/bb-mcp`.
 
 Local testing in Blockbench: File → Plugins → Load Plugin from File → select `dist/mcp.js`.
+
+Run `bun test` for workspace isolation, real HTTP lifecycle and Node bridge exit tests. `bun run docs` generates API documentation and exits; `bun run docs:serve` starts its optional preview server.
+
+Manual multi-agent acceptance in Blockbench:
+
+1. Connect two independent HTTP clients to the same plugin. Each calls `create_project` and builds different cubes, textures and animations. Alternate calls and verify each model and Undo history belongs to its client.
+2. Repeat using one connection and two different `workspace_id` values on every call. Check camera angles and paint settings remain associated with their workspace.
+3. Try selecting the other workspace's project UUID and capturing it by name. Both calls must fail. Resource reads/lists must reflect the caller's workspace; shared-session resource requests use `_meta["blockbench/workspace_id"]`.
+4. Disconnect one client, reconnect and use `list_projects` / `select_project` to resume its model. The other client must continue working.
+5. Disable/reload the plugin with an SSE connection open. Verify the port is released immediately and the next load accepts connections.
+6. For stdio clients, close the client and confirm its bridge process exits. Disconnect Blockbench while a client is idle and confirm the bridge exits within the health interval plus timeout and cleanup deadline.
+
+Tools must await all editor work before returning. Native callbacks that continue after return need an awaited completion path or must be restricted as global editor tools. Use distinct output paths for independent models. Pause manual editing while MCP tool calls are running.
 
 ## Project Structure
 - `index.ts`: Plugin entry; registers server, UI, settings.

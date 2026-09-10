@@ -38,6 +38,14 @@ export function settingsSetup() {
       category,
       icon: "cloud_download",
     }),
+    new Setting("mcp_allow_global_tools", {
+      name: tl("mcp.settings.global_tools_name"),
+      description: tl("mcp.settings.global_tools_desc"),
+      type: "toggle",
+      value: false,
+      category,
+      icon: "code",
+    }),
     new Setting("mcp_session_timeout", {
       name: tl("mcp.settings.session_timeout_name"),
       description: tl("mcp.settings.session_timeout_desc"),

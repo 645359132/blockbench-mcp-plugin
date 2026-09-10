@@ -2,6 +2,9 @@ import { z } from "zod";
 import type { IMCPTool, IMCPPrompt, IMCPResource, StatusType } from "@/types";
 import { getServer } from "@/server/server";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { workspaceManager, type WorkspaceContext } from "@/lib/workspaces";
+import { workspaceIdParameter } from "@/lib/workspaceSchema";
+import { sessionManager } from "@/lib/sessions";
 
 /**
  * Declarative tool spec for documentation and registration.
@@ -58,6 +61,7 @@ export const resources: Record<string, IMCPResource> = {};
 
 export interface ToolContext {
   reportProgress: (progress: { progress: number; total: number }) => void;
+  workspace?: WorkspaceContext;
 }
 
 interface TextContent {
@@ -79,6 +83,7 @@ interface ToolDefinition {
   title: string;
   description: string;
   inputSchema: Record<string, z.ZodType>;
+  parameters: z.ZodType;
   outputSchema?: Record<string, z.ZodType> | z.ZodType;
   execute: (args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
   annotations?: {
@@ -93,6 +98,76 @@ interface ToolDefinition {
  * Store tool definitions for dynamic server reconstruction
  */
 const toolDefinitions: Record<string, ToolDefinition> = {};
+
+interface RequestContext {
+  sessionId?: string;
+  signal?: AbortSignal;
+  _meta?: Record<string, unknown>;
+}
+
+interface ToolRegistrar {
+  registerTool: (
+    toolName: string,
+    definition: Pick<ToolDefinition, "title" | "description" | "inputSchema" | "annotations">,
+    callback: (args: unknown, extra: unknown) => Promise<unknown>
+  ) => void;
+}
+
+const globalTools = new Set([
+  "risky_eval", "trigger_action", "emulate_clicks", "fill_dialog",
+  "create_brush_preset", "load_brush_preset",
+  "import_texture_set",
+]);
+
+function requestWorkspace(extra: RequestContext, explicit?: unknown): string {
+  return workspaceIdParameter.parse(explicit ?? extra._meta?.["blockbench/workspace_id"]) ?? "default";
+}
+
+async function runInWorkspace<T>(
+  extra: RequestContext,
+  workspaceId: string,
+  requireProject: boolean,
+  operation: (workspace?: WorkspaceContext) => Promise<T>
+): Promise<T> {
+  if (!extra.sessionId) {
+    // The reference server is used by local UI tests only, never by HTTP clients.
+    return operation();
+  }
+  const endActivity = sessionManager.beginActivity(extra.sessionId);
+  try {
+    return await workspaceManager.run({
+      sessionId: extra.sessionId, workspaceId, requireProject, signal: extra.signal,
+    }, operation);
+  } finally {
+    endActivity();
+  }
+}
+
+async function executeTool(name: string, definition: ToolDefinition, args: unknown, extra: RequestContext = {}) {
+  const input = args as Record<string, unknown>;
+  const workspaceId = requestWorkspace(extra, input.workspace_id);
+  // Parse the full schema as well: extracting its shape alone loses object refinements.
+  const parameters = await definition.parameters.parseAsync(input);
+  return runInWorkspace(extra, workspaceId, !["create_project", "select_project", "list_projects"].includes(name), async workspace => {
+    if (workspace && name === "animation_timeline" && parameters.action === "play") {
+      throw new Error("Continuous playback cannot outlive an isolated tool call. Set a timeline time and capture a frame, or preview playback manually in Blockbench.");
+    }
+    if (workspace && globalTools.has(name)) {
+      if (typeof Settings === "undefined" || Settings.get("mcp_allow_global_tools") !== true) {
+        throw new Error("Global editor tools are disabled for isolated modeling. Use the structured modeling tools, or enable MCP global editor tools in Blockbench for a single workspace.");
+      }
+      workspaceManager.assertExclusive();
+    }
+    if (workspace && name === "capture_screenshot" && parameters.project !== undefined) {
+      const project = ModelProject.all.find(p => p.uuid === parameters.project || p.name === parameters.project);
+      if (!project || project.uuid !== workspace.getProjectId()) {
+        throw new Error("Capture the project bound to this workspace. Use select_project to change its binding first.");
+      }
+    }
+    const result = await definition.execute(parameters, { reportProgress: () => {}, workspace });
+    return typeof result === "string" ? { content: [{ type: "text" as const, text: result }] } : result;
+  });
+}
 
 /**
  * Extracts the shape from a Zod schema, unwrapping ZodEffects if necessary.
@@ -145,12 +220,13 @@ export function createTool<T extends z.ZodType>(
     throw new Error(`Tool with name "${name}" already exists.`);
   }
 
-  const inputSchema = extractShape(tool.parameters);
+  const inputSchema = { ...extractShape(tool.parameters), workspace_id: workspaceIdParameter };
 
   const toolDef: ToolDefinition = {
     title: tool.annotations?.title ?? tool.description,
     description: tool.description,
     inputSchema,
+    parameters: tool.parameters,
     execute: tool.execute,
     annotations: tool.annotations,
   };
@@ -160,19 +236,9 @@ export function createTool<T extends z.ZodType>(
 
   // Register with server if enabled
   if (enabled) {
-    type ToolArgs = z.infer<T>;
-
     const server = getServer();
 
-    const registerTool = server.registerTool.bind(server) as unknown as (
-      toolName: string,
-      definition: {
-        title: string;
-        description: string;
-        inputSchema: Record<string, z.ZodType>;
-      },
-      callback: (args: unknown, extra: unknown) => Promise<unknown>
-    ) => void;
+    const registerTool = (server as unknown as ToolRegistrar).registerTool.bind(server);
 
     registerTool(
       name,
@@ -180,34 +246,9 @@ export function createTool<T extends z.ZodType>(
         title: toolDef.title,
         description: toolDef.description,
         inputSchema,
+        annotations: toolDef.annotations,
       },
-      async (args: unknown, _extra: unknown) => {
-        // Provide a no-op reportProgress function
-        // Note: Progress notifications require SSE streaming which is not enabled
-        // in the current StreamableHTTPServerTransport configuration (enableJsonResponse: true)
-        const reportProgress: ToolContext["reportProgress"] = () => {};
-
-        const context: ToolContext = { reportProgress };
-        const result = await tool.execute(args as ToolArgs, context);
-
-        // Normalize result to MCP CallToolResult format
-        // Tools may return plain strings for convenience, convert to proper format
-        if (typeof result === "string") {
-          return {
-            content: [{ type: "text", text: result }],
-          };
-        }
-
-        // If result already has content array, return as-is
-        if (result && typeof result === "object" && "content" in result) {
-          return result;
-        }
-
-        // Fallback: stringify any other result
-        return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-        };
-      }
+      (args, extra) => executeTool(name, toolDef, args, extra as RequestContext)
     );
   }
 
@@ -244,17 +285,7 @@ export function getEnabledToolDefinitions() {
 export function registerToolsOnServer(server: unknown) {
   const enabledDefs = getEnabledToolDefinitions();
 
-  const typedServer = server as {
-    registerTool: (
-      toolName: string,
-      definition: {
-        title: string;
-        description: string;
-        inputSchema: Record<string, z.ZodType>;
-      },
-      callback: (args: unknown, extra: unknown) => Promise<unknown>
-    ) => void;
-  };
+  const typedServer = server as ToolRegistrar;
 
   for (const [name, toolDef] of Object.entries(enabledDefs)) {
     typedServer.registerTool(
@@ -263,26 +294,9 @@ export function registerToolsOnServer(server: unknown) {
         title: toolDef.title,
         description: toolDef.description,
         inputSchema: toolDef.inputSchema,
+        annotations: toolDef.annotations,
       },
-      async (args: unknown, _extra: unknown) => {
-        const reportProgress: ToolContext["reportProgress"] = () => {};
-        const context: ToolContext = { reportProgress };
-        const result = await toolDef.execute(args as Record<string, unknown>, context);
-
-        if (typeof result === "string") {
-          return {
-            content: [{ type: "text", text: result }],
-          };
-        }
-
-        if (result && typeof result === "object" && "content" in result) {
-          return result;
-        }
-
-        return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-        };
-      }
+      (args, extra) => executeTool(name, toolDef, args, extra as RequestContext)
     );
   }
 }
@@ -431,7 +445,8 @@ export function registerResourcesOnServer(server: unknown) {
       },
       readCallback: (
         uri: URL,
-        variables: Record<string, string | string[]>
+        variables: Record<string, string | string[]>,
+        extra: RequestContext
       ) => Promise<{
         contents: Array<{ uri: string; text: string; mimeType?: string } | { uri: string; blob: string; mimeType?: string }>;
       }>
@@ -441,9 +456,13 @@ export function registerResourcesOnServer(server: unknown) {
   for (const [name, resourceDef] of Object.entries(resourceDefinitions)) {
     typedServer.registerResource(
       name,
-      new ResourceTemplate(resourceDef.uriTemplate, { list: resourceDef.listCallback }),
+      new ResourceTemplate(resourceDef.uriTemplate, {
+        list: resourceDef.listCallback ? (extra) => runInWorkspace(
+          extra, requestWorkspace(extra), false, async () => resourceDef.listCallback!()
+        ) : undefined,
+      }),
       resourceDef.metadata,
-      async (uri: URL, variables: Record<string, string | string[]>) => {
+      async (uri: URL, variables: Record<string, string | string[]>, extra: RequestContext) => {
         const normalizedVariables = Object.fromEntries(
           Object.entries(variables).map(([key, value]) => {
             if (Array.isArray(value)) {
@@ -453,7 +472,8 @@ export function registerResourcesOnServer(server: unknown) {
           })
         ) as Record<string, string>;
 
-        return resourceDef.readCallback(uri, normalizedVariables);
+        return runInWorkspace(extra, requestWorkspace(extra), false,
+          async () => resourceDef.readCallback(uri, normalizedVariables));
       }
     );
   }

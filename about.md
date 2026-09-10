@@ -1,13 +1,15 @@
 ## Model Context Protocol Server
 Configure experimental MCP server under Blockbench settings: __Settings__ > __General__ > __MCP Server Port__ and __MCP Server Endpoint__
 
-The following examples use the default values of `:3000/mcp`
+The following examples use the default URL `http://127.0.0.1:3000/bb-mcp`. Use native HTTP connections when supported to avoid extra Node.js processes.
 
 > __Be sure your Blockbench settings match the port and endpoint used in the MCP JSON configuration.__
 
 ## Installation
 
-### Claude Desktop
+### Clients requiring stdio (including Claude Desktop local configuration)
+
+Download this repository, install its dependencies once with `bun install --frozen-lockfile`, and use Node.js 22+ with the absolute bridge path below.
 
 __`claude_desktop_config.json`__
 
@@ -15,10 +17,10 @@ __`claude_desktop_config.json`__
 {
   "mcpServers": {
     "blockbench": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "mcp-remote",
-        "http://localhost:3000/mcp"
+        "/absolute/path/blockbench-mcp-plugin/scripts/stdio-bridge.mjs",
+        "http://127.0.0.1:3000/bb-mcp"
       ]
     }
   }
@@ -37,8 +39,9 @@ __`.vscode/mcp.json`__
 {
     "servers": {
         "blockbench": {
-            "url": "http://localhost:3000/mcp"
-        },
+            "type": "http",
+            "url": "http://127.0.0.1:3000/bb-mcp"
+        }
     }
 }
 ```
@@ -48,7 +51,8 @@ __`.vscode/mcp.json`__
 1. Start Blockbench
 2. Start your MCP client
 3. Enable/disable tools in client
-4. Prompt to create models
+4. Call `create_project` to bind a new model, or `list_projects` then `select_project` to resume an open model.
+5. Agents sharing one connection must pass a distinct `workspace_id` on every tool call. Separate connections each have their own default workspace.
 
 ### Limitations / Expectations
 

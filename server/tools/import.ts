@@ -56,7 +56,7 @@ export function registerImportTools() {
           );
         }
 
-        const res = await fetch(parsed.href);
+        const res = await fetch(parsed.href, { signal: AbortSignal.timeout(15_000) });
         if (!res.ok) {
           throw new Error(
             `Failed to fetch GeoJSON from "${parsed.href}": ${res.status} ${res.statusText}`

@@ -11,14 +11,14 @@
     <nav class="sidebar">
       <div class="sidebar-brand">
         <h1>Blockbench MCP</h1>
-        <p>v1.6.0 — API Reference</p>
+        <p>v1.6.1 — API Reference</p>
       </div>
 
       <input id="search" type="text" placeholder="Search tools..." class="search-input" />
 
       <div class="nav-group">
         <p class="nav-heading">Overview</p>
-        <a href="#tools" class="nav-link">Tools <span class="count">(106)</span></a>
+        <a href="#tools" class="nav-link">Tools <span class="count">(108)</span></a>
         <a href="#prompts" class="nav-link">Prompts <span class="count">(6)</span></a>
         <a href="#resources" class="nav-link">Resources <span class="count">(12)</span></a>
       </div>
@@ -36,7 +36,7 @@
         <a href="#cat-material-instances" class="nav-link">Material Instances <span class="count">(5)</span></a>
         <a href="#cat-mesh-editing" class="nav-link">Mesh Editing <span class="count">(11)</span></a>
         <a href="#cat-paint-tools" class="nav-link">Paint Tools <span class="count">(12)</span></a>
-        <a href="#cat-project" class="nav-link">Project <span class="count">(2)</span></a>
+        <a href="#cat-project" class="nav-link">Project <span class="count">(4)</span></a>
         <a href="#cat-textures" class="nav-link">Textures <span class="count">(13)</span></a>
         <a href="#cat-ui-interaction" class="nav-link">UI Interaction <span class="count">(4)</span></a>
         <a href="#cat-uv-mapping" class="nav-link">UV Mapping <span class="count">(3)</span></a>
@@ -47,9 +47,9 @@
     <main class="main">
       <header class="page-header">
         <h1>Blockbench MCP Plugin</h1>
-        <p class="subtitle">API Reference — v1.6.0</p>
+        <p class="subtitle">API Reference — v1.6.1</p>
         <nav class="stats">
-          <a href="#tools"><strong>106</strong> tools (39 stable, 67 experimental)</a>
+          <a href="#tools"><strong>108</strong> tools (41 stable, 67 experimental)</a>
           <a href="#prompts"><strong>6</strong> prompts</a>
           <a href="#resources"><strong>12</strong> resources</a>
         </nav>
@@ -61,6 +61,15 @@
 <li><a href="https://jasonjgardner.github.io/blockbench-mcp-plugin/mcp.js">Stable</a></li>
 <li><a href="https://jasonjgardner.github.io/blockbench-mcp-plugin/nightly/mcp.js">Latest</a></li>
 </ul>
+<p>Connect to the plugin with native Streamable HTTP at <code>http://127.0.0.1:3000/bb-mcp</code> (or the port and endpoint configured in Blockbench). The server runs inside Blockbench and HTTP clients start no extra Node.js process.</p>
+<p>Codex configuration:</p>
+<pre><code class="language-toml">[mcp_servers.blockbench]
+url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
+</code></pre>
+<p>See the <a href="https://developers.openai.com/codex/mcp/">official Codex MCP documentation</a>.</p>
+<p>Each independently initialized MCP connection has its own default workspace. Agents sharing a connection must each use a distinct <code>workspace_id</code> on every tool call; resource calls use <code>_meta: {&quot;blockbench/workspace_id&quot;: &quot;your-workspace&quot;}</code>. Use separate HTTP sessions if the client cannot attach resource metadata.</p>
+<p>For clients that require stdio, use <code>node /absolute/path/blockbench-mcp-plugin/scripts/stdio-bridge.mjs http://127.0.0.1:3000/bb-mcp</code> after installing the repository dependencies. The bridge uses one process, watches stdin and its parent, checks server health, and bounds session shutdown to two seconds.</p>
+<p>Replace older <code>npx mcp-remote</code> connection entries and restart the affected clients. See the repository's <a href="https://github.com/jasonjgardner/blockbench-mcp-plugin/blob/main/llms-install.md">complete installation guide</a> for client-specific configuration and cleanup behavior.</p>
 
       </section>
 
@@ -108,6 +117,11 @@
       <td class="col-type">&quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;up&quot; | &quot;down&quot;[] | unknown | boolean | object[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Faces to apply the texture to. Set to `true` to enable auto UV mapping. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -197,6 +211,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether the cube is visible or not.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -229,6 +248,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Project name or UUID.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -244,7 +268,22 @@
       <p class="card-title">Capture App Screenshot</p>
       <p class="card-desc">Returns the image data of the Blockbench app.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-set_camera_angle" class="card tool-card">
@@ -287,6 +326,11 @@
       <td class="col-type">&quot;unset&quot; | &quot;orthographic&quot; | &quot;perspective&quot;</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Camera projection type.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -339,6 +383,11 @@
       <td class="col-type">Record&lt;string, string&gt;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Particle effects with timestamps as keys</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -388,6 +437,11 @@
       <td class="col-type">object[]</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Keyframe data for the action.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -447,6 +501,11 @@
       <td class="col-type">object</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Custom bezier curve control points (only for 'custom' action).</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -481,6 +540,11 @@
       <td class="col-type">object</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Bone configuration data.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -535,6 +599,11 @@
       <td class="col-type">object</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Time range for selection.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -584,6 +653,11 @@
       <td class="col-type">object</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Operation-specific parameters.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -623,6 +697,11 @@
       <td class="col-type">object</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Target data for paste operation.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -641,7 +720,22 @@
       <p class="card-title">List Armatures</p>
       <p class="card-desc">Lists all armatures in the current project with their basic info.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-get_armature" class="card tool-card">
@@ -674,6 +768,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to include bone hierarchy in response. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -718,6 +817,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to add an initial bone to the armature. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -747,6 +851,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">UUID or name of the armature to remove.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -796,6 +905,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to export this armature.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -825,6 +939,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Filter bones by armature UUID or name. If not provided, lists all bones.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -859,6 +978,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to include all vertex weights in response. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -923,6 +1047,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Marker color index (0-7). <span class="param-meta">[min: 0, max: 7]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -957,6 +1086,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to also remove child bones. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1031,6 +1165,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc"></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1075,6 +1214,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc"> <span class="param-meta">[min: 0, max: 7]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1084,7 +1228,7 @@
         <h3 class="card-name">select_armature_bones</h3>
         <div class="card-badges">
           <span class="badge badge-stable">stable</span>
-          
+
         </div>
       </div>
       <p class="card-title">Select Armature Bones</p>
@@ -1119,6 +1263,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Clear existing selection before selecting. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1153,6 +1302,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Filter weights by specific bone.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1197,6 +1351,11 @@
       <td class="col-type">number</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Weight value (0-1). Set to 0 to remove weight. <span class="param-meta">[min: 0, max: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1236,6 +1395,11 @@
       <td class="col-type">Record&lt;string, number&gt;</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Map of vertex_key -&gt; weight value.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1270,6 +1434,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">ID or name of the mesh. If not provided, uses selected mesh.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1302,6 +1471,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">ID or name of the element to remove.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1366,6 +1540,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc"> <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1405,6 +1584,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Maximum tree depth to traverse. Use a small value to summarize large projects. <span class="param-meta">(default: <code>32</code>) [min: 1, max: 32]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1444,6 +1628,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc"></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1478,6 +1667,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">New name to assign.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1542,6 +1736,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Maximum number of results to return. <span class="param-meta">(default: <code>200</code>) [min: 1, max: 1000]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1581,6 +1780,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">UUID or name of a parent group. If provided, only descendants of this group are selected.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1615,6 +1819,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Include the list of cube face keys (e.g., 'north') that reference the texture. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1630,7 +1839,22 @@
       <p class="card-title">Get Selection</p>
       <p class="card-desc">Returns the current selection state: selected cube/mesh/group UUIDs and names, plus the active texture. Use this to verify what `apply_texture` or a paint tool with `fill_mode=&quot;selected_elements&quot;` will target.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
         </section>
@@ -1661,6 +1885,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">If true, only return codecs compatible with the current project's format. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1705,6 +1934,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Maximum number of characters to include in the returned `content` field. Use 0 to omit content entirely (useful when only writing to disk). Larger values risk exceeding MCP context limits. <span class="param-meta">(default: <code>100000</code>) [min: 0, max: 2000000]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1737,6 +1971,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Number of steps to undo. <span class="param-meta">(default: <code>1</code>) [min: 1, max: 100]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1766,6 +2005,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Number of steps to redo. <span class="param-meta">(default: <code>1</code>) [min: 1, max: 100]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1795,6 +2039,11 @@
       <td class="col-type">integer</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Maximum number of entries to return (most recent first). <span class="param-meta">(default: <code>50</code>) [min: 1, max: 200]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1804,7 +2053,7 @@
         <h3 class="card-name">save_checkpoint</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Save Checkpoint</p>
@@ -1824,6 +2073,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Descriptive name for the checkpoint. Shown in undo history so agents can navigate back to this point. <span class="param-meta">[minLength: 1, maxLength: 120]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1856,6 +2110,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Path to the GeoJSON file or data URL, or the GeoJSON string itself.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1893,6 +2152,11 @@
       <td class="col-type">&quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;up&quot; | &quot;down&quot;[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Specific faces to get/clear material instances for. If not provided, returns/clears all faces.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1932,6 +2196,11 @@
       <td class="col-type">&quot;north&quot; | &quot;south&quot; | &quot;east&quot; | &quot;west&quot; | &quot;up&quot; | &quot;down&quot;[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Faces to set the material instance on. Defaults to all faces. <span class="param-meta">(default: <code>[&quot;north&quot;,&quot;south&quot;,&quot;east&quot;,&quot;west&quot;,&quot;up&quot;,&quot;down&quot;]</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -1947,7 +2216,22 @@
       <p class="card-title">List Material Instances</p>
       <p class="card-desc">Lists all unique material instance names used in the project. Returns the material instance names along with which cubes and faces use them.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-bulk_set_material_instances" class="card tool-card">
@@ -1975,6 +2259,11 @@
       <td class="col-type">object[]</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Array of material instance assignments. <span class="param-meta">[minItems: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2014,6 +2303,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">If true, clears material instances from all cubes in the project. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2056,6 +2350,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Group/bone to which the mesh belongs.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2095,6 +2394,11 @@
       <td class="col-type">&quot;faces&quot; | &quot;edges&quot; | &quot;vertices&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">What to extrude: faces, edges, or vertices. <span class="param-meta">(default: <code>&quot;faces&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2129,6 +2433,11 @@
       <td class="col-type">number</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Number of subdivision cuts to make. <span class="param-meta">(default: <code>1</code>) [min: 1, max: 10]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2168,6 +2477,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Group/bone to which the sphere belongs.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2212,6 +2526,11 @@
       <td class="col-type">&quot;select&quot; | &quot;add&quot; | &quot;remove&quot; | &quot;toggle&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Selection action: select (replace), add, remove, or toggle. <span class="param-meta">(default: <code>&quot;select&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2251,6 +2570,11 @@
       <td class="col-type">string[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Specific vertex keys to move. If not provided, moves all selected vertices.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2290,6 +2614,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">When deleting faces/edges, whether to keep the vertices. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2329,6 +2658,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to only merge selected vertices. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2368,6 +2702,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Texture ID or name to apply to the new face.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2407,6 +2746,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Group/bone ID or name.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2441,6 +2785,11 @@
       <td class="col-type">object[]</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Points defining the cut path. <span class="param-meta">[minItems: 2]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2508,6 +2857,11 @@
       <td class="col-type">&quot;default&quot; | &quot;set_opacity&quot; | &quot;color&quot; | &quot;behind&quot; | &quot;multiply&quot; | &quot;add&quot; | &quot;screen&quot; | &quot;overlay&quot; | &quot;difference&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Fill blend mode.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2572,6 +2926,11 @@
       <td class="col-type">&quot;default&quot; | &quot;set_opacity&quot; | &quot;color&quot; | &quot;behind&quot; | &quot;multiply&quot; | &quot;add&quot; | &quot;screen&quot; | &quot;overlay&quot; | &quot;difference&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Shape blend mode.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2631,6 +2990,11 @@
       <td class="col-type">&quot;default&quot; | &quot;set_opacity&quot; | &quot;color&quot; | &quot;behind&quot; | &quot;multiply&quot; | &quot;add&quot; | &quot;screen&quot; | &quot;overlay&quot; | &quot;difference&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Gradient blend mode.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2680,6 +3044,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Also pick and apply the pixel's opacity. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2734,6 +3103,11 @@
       <td class="col-type">&quot;copy&quot; | &quot;sample&quot; | &quot;pattern&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Copy brush mode. <span class="param-meta">(default: <code>&quot;copy&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2793,6 +3167,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to connect erase strokes with lines. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2867,6 +3246,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Pick combined layer colors.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2911,6 +3295,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to connect paint strokes with lines. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -2975,6 +3364,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Enable pixel perfect drawing.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3004,6 +3398,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Name of the brush preset to load.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3053,6 +3452,11 @@
       <td class="col-type">&quot;create&quot; | &quot;add&quot; | &quot;subtract&quot; | &quot;intersect&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Selection mode. <span class="param-meta">(default: <code>&quot;create&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3107,6 +3511,11 @@
       <td class="col-type">number</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Target position for moving layers.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3123,7 +3532,7 @@
         </div>
       </div>
       <p class="card-title">Create Project</p>
-      <p class="card-desc">Creates a new project with the given name and project type.</p>
+      <p class="card-desc">Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call.</p>
       <div class="overflow-x">
         <table class="param-table">
       <thead>
@@ -3144,6 +3553,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Project format ID from Blockbench's Formats registry. <span class="param-meta">(default: <code>&quot;bedrock_block&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3159,7 +3573,85 @@
       <p class="card-title">Get Project Info</p>
       <p class="card-desc">Returns read-only project orientation: format id and display name, project name/UUID, texture resolution (texture_width/height), element counts, and a summary of top-level groups. Prefer this over `risky_eval` for first-look inspection — no JavaScript execution required.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-select_project" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">select_project</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+
+        </div>
+      </div>
+      <p class="card-title">Select Project</p>
+      <p class="card-desc">Binds an existing open project to this workspace. Projects owned by another workspace cannot be selected. Use this to resume after reconnecting.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">project_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">UUID of an open project returned by list_projects. Must be unclaimed or owned by this workspace. <span class="param-meta">[minLength: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-list_projects" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">list_projects</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">List Projects</p>
+      <p class="card-desc">Lists open projects available to this workspace, including its owned projects and unclaimed projects. Use select_project with a returned UUID to resume work.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
         </section>
@@ -3235,6 +3727,11 @@
       <td class="col-type">&quot;auto&quot; | &quot;front&quot; | &quot;double&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Render sides for the texture. Auto, front, or double. <span class="param-meta">(default: <code>&quot;auto&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3274,6 +3771,11 @@
       <td class="col-type">&quot;all&quot; | &quot;blank&quot; | &quot;none&quot;</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Apply texture to element or group. <span class="param-meta">(default: <code>&quot;blank&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3313,6 +3815,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether the texture group is a PBR material or not. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3328,7 +3835,22 @@
       <p class="card-title">List Textures</p>
       <p class="card-desc">Returns a list of all textures in the Blockbench editor.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-get_texture" class="card tool-card">
@@ -3356,6 +3878,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Texture ID or name. If not provided, uses selected texture.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3420,6 +3947,11 @@
       <td class="col-type">number</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Subsurface scattering value (0-255) for Bedrock 1.21.30+ materials. <span class="param-meta">[min: 0, max: 255]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3484,6 +4016,11 @@
       <td class="col-type">number</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Subsurface scattering value (0-255). <span class="param-meta">[min: 0, max: 255]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3499,7 +4036,22 @@
       <p class="card-title">List Materials</p>
       <p class="card-desc">Lists all PBR materials (texture groups with is_material=true) and their assigned textures per channel.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-get_material_info" class="card tool-card">
@@ -3527,6 +4079,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Material name or UUID.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3556,6 +4113,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Path to the .texture_set.json file to import.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3595,6 +4157,11 @@
       <td class="col-type">&quot;color&quot; | &quot;normal&quot; | &quot;height&quot; | &quot;mer&quot;</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">PBR channel to assign the texture to.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3624,6 +4191,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Material name or UUID to save.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3633,7 +4205,7 @@
         <h3 class="card-name">activate_texture</h3>
         <div class="card-badges">
           <span class="badge badge-stable">stable</span>
-          
+
         </div>
       </div>
       <p class="card-title">Activate Texture</p>
@@ -3653,6 +4225,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Texture ID, UUID, or name to activate in the texture panel.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3695,6 +4272,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Stringified form of event arguments.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3724,6 +4306,11 @@
       <td class="col-type">string</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">JavaScript code to evaluate. Do not pass `console` commands or comments.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3758,6 +4345,11 @@
       <td class="col-type">object</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Drag options. If set, will perform a drag from position to 'to'.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3792,6 +4384,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to confirm or cancel the dialog after filling it. True to confirm, false to cancel. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3834,6 +4431,11 @@
       <td class="col-type">Record&lt;string, number[]&gt;</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">UV coordinates for each vertex of the face.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3873,6 +4475,11 @@
       <td class="col-type">string[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Specific face keys to UV map. If not provided, maps all selected faces.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3912,6 +4519,11 @@
       <td class="col-type">string[]</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Specific face keys to rotate UV for. If not provided, rotates all selected faces.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -3930,7 +4542,22 @@
       <p class="card-title">Get Hytale Format Info</p>
       <p class="card-desc">Returns information about the current Hytale format. Requires the Hytale plugin and a Hytale format project to be active.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-hytale_validate_model" class="card tool-card">
@@ -3944,7 +4571,22 @@
       <p class="card-title">Validate Hytale Model</p>
       <p class="card-desc">Validates the current Hytale model against Hytale engine constraints (node count, UV sizes, etc.).</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-hytale_set_cube_properties" class="card tool-card">
@@ -3952,7 +4594,7 @@
         <h3 class="card-name">hytale_set_cube_properties</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Set Hytale Cube Properties</p>
@@ -3982,6 +4624,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to render both sides of faces</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4011,6 +4658,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">ID or name of the cube. If not provided, uses selected cube.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4020,7 +4672,7 @@
         <h3 class="card-name">hytale_create_quad</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Create Hytale Quad</p>
@@ -4065,6 +4717,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Whether to render both sides <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4080,7 +4737,22 @@
       <p class="card-title">List Hytale Attachments</p>
       <p class="card-desc">Lists all attachment collections in the current Hytale project.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-hytale_set_attachment_piece" class="card tool-card">
@@ -4088,7 +4760,7 @@
         <h3 class="card-name">hytale_set_attachment_piece</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Set Attachment Piece</p>
@@ -4113,6 +4785,11 @@
       <td class="col-type">boolean</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Whether the group is an attachment piece</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4128,7 +4805,22 @@
       <p class="card-title">List Attachment Pieces</p>
       <p class="card-desc">Lists all groups marked as attachment pieces.</p>
       <div class="overflow-x">
-        <p class="empty-params">No parameters</p>
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
       </div>
     </div>
 <div id="tool-hytale_create_visibility_keyframe" class="card tool-card">
@@ -4136,7 +4828,7 @@
         <h3 class="card-name">hytale_create_visibility_keyframe</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Create Visibility Keyframe</p>
@@ -4171,6 +4863,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Animation UUID or name. If not provided, uses current animation.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4180,7 +4877,7 @@
         <h3 class="card-name">hytale_set_animation_loop</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Set Animation Loop Mode</p>
@@ -4205,6 +4902,11 @@
       <td class="col-type">&quot;loop&quot; | &quot;hold&quot; | &quot;once&quot;</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Loop mode: loop (continuous), hold (freeze on last frame), once (play once)</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4214,7 +4916,7 @@
         <h3 class="card-name">hytale_set_cube_stretch</h3>
         <div class="card-badges">
           <span class="badge badge-experimental">experimental</span>
-          
+
         </div>
       </div>
       <p class="card-title">Set Cube Stretch</p>
@@ -4239,6 +4941,11 @@
       <td class="col-type">number[]</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Stretch values [x, y, z]. <span class="param-meta">[minItems: 3, maxItems: 3]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4268,6 +4975,11 @@
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">ID or name of the cube. If not provided, uses selected cube.</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
     </tr></tbody>
     </table>
       </div>
@@ -4282,7 +4994,7 @@
         <h3 class="card-name">blockbench_native_apis</h3>
         <div class="card-badges"><span class="badge badge-stable">stable</span></div>
       </div>
-      
+
       <p class="card-desc">Essential information about Blockbench v5.0 native API security model and requireNativeModule() usage. Use this when working with Node.js modules, file system access, or native APIs in Blockbench plugins.</p>
       <div class="overflow-x"><p class="empty-params">No arguments</p></div>
     </div>
@@ -4291,7 +5003,7 @@
         <h3 class="card-name">blockbench_code_eval_safety</h3>
         <div class="card-badges"><span class="badge badge-stable">stable</span></div>
       </div>
-      
+
       <p class="card-desc">Critical safety guide for agents using code evaluation/execution tools with Blockbench v5.0+. Contains breaking changes, quick reference, common mistakes, and safe code patterns for native module usage.</p>
       <div class="overflow-x"><p class="empty-params">No arguments</p></div>
     </div>
@@ -4484,7 +5196,7 @@
       </section>
 
       <footer class="page-footer">
-        Generated 2026-05-22T14:18:59.107Z from Zod schemas
+        Generated 2026-09-10T07:00:38.998Z from Zod schemas
       </footer>
     </main>
   </div>

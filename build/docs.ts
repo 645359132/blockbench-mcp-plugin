@@ -1,5 +1,6 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
+import { withWorkspaceParameter } from "../lib/workspaceSchema";
 import { toolManifest, promptDocs, resourceDocs } from "./docs-manifest";
 import type { ToolSpec, PromptSpec, ResourceSpec } from "../lib/factories";
 import { version } from "../package.json";
@@ -77,7 +78,7 @@ function convertToolSpec(spec: ToolSpec, category: string): ToolDocEntry {
       readOnlyHint: spec.annotations?.readOnlyHint,
       openWorldHint: spec.annotations?.openWorldHint,
     },
-    parameters: convertSchema(spec.name, spec.parameters),
+    parameters: convertSchema(spec.name, withWorkspaceParameter(spec.parameters)),
   };
 }
 
@@ -413,7 +414,7 @@ async function main() {
   log.step("Writing docs/index.html...");
   const htmlPath = docsDir + "/index.html";
   const htmlContent = await generateHtml(output);
-  await Bun.write(htmlPath, htmlContent);
+  await Bun.write(htmlPath, htmlContent.replace(/[\t ]+$/gm, ""));
   log.info(`  ${htmlPath}`);
 
   log.success(

@@ -12,6 +12,8 @@ export function createServer() {
   return new McpServer({
     name: "Blockbench MCP",
     version: VERSION,
+  }, {
+    instructions: "Each MCP session has its own modeling workspace. Start with create_project or list_projects then select_project. Agents sharing this connection must each choose a unique workspace_id and pass it on every tool call. Resource requests select a workspace with _meta['blockbench/workspace_id']. Tools and resources are serialized inside Blockbench and operate on the bound project. Global editor tools require explicit single-workspace opt-in. Use distinct export paths for each model.",
   });
 }
 

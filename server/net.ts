@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { EmptyResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Server as NetServer, Socket } from 'node:net'
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import {
   registerToolsOnServer,
   registerResourcesOnServer,
@@ -9,619 +9,520 @@ import {
 } from '@/lib/factories'
 import { createServer as createMcpServer } from '@/server/server'
 import { sessionManager, type SessionConfig } from '@/lib/sessions'
+import { workspaceManager } from '@/lib/workspaces'
 
 export type { NetServer }
 
-/**
- * Keep-alive configuration. Layered approach — TCP, HTTP, SSE, and MCP-level
- * pings each catch different classes of dead/stale connections.
- */
 interface KeepAliveConfig {
-  /** Enable TCP keep-alive on accepted sockets */
   enabled: boolean
-  /** Initial delay before sending first TCP keep-alive probe (ms) */
   initialDelay: number
-  /**
-   * Per-socket idle timeout (ms). If the socket sees no I/O for this long
-   * it's destroyed at the OS level. 0 disables. Should exceed
-   * sseHeartbeatIntervalMs and the session inactivity timeout to avoid
-   * fighting application-level liveness.
-   */
   idleTimeoutMs: number
-  /**
-   * Interval (ms) to write SSE comment heartbeats (`: keepalive\n\n`) during
-   * a streaming response. Keeps connections alive through proxies/firewalls
-   * that drop idle TCP. 0 disables.
-   */
   sseHeartbeatIntervalMs: number
-  /** Per-ping timeout (ms) for MCP-level server.ping() calls. */
   pingTimeoutMs: number
-  /** HTTP Keep-Alive: timeout=N seconds advertised to clients. */
   httpKeepAliveTimeoutSec: number
 }
 
 const DEFAULT_KEEP_ALIVE: KeepAliveConfig = {
   enabled: true,
-  initialDelay: 30000,           // 30s before first TCP probe
-  idleTimeoutMs: 10 * 60 * 1000, // 10min hard socket timeout
-  sseHeartbeatIntervalMs: 15000, // 15s SSE comment heartbeat
-  pingTimeoutMs: 5000,           // 5s MCP ping timeout
-  httpKeepAliveTimeoutSec: 75    // matches typical browser/proxy defaults
+  initialDelay: 30000,
+  idleTimeoutMs: 10 * 60 * 1000,
+  sseHeartbeatIntervalMs: 15000,
+  pingTimeoutMs: 5000,
+  httpKeepAliveTimeoutSec: 75
 }
 
-export type SessionTransports = Map<
-  string,
-  { transport: WebStandardStreamableHTTPServerTransport; server: McpServer }
->
+type SessionTransport = {
+  transport: WebStandardStreamableHTTPServerTransport
+  server: McpServer
+}
+
+export type SessionTransports = Map<string, SessionTransport>
+export type ShutdownServer = () => Promise<void>
+
+const MAX_HEADER_BYTES = 16 * 1024
+const MAX_BODY_BYTES = 32 * 1024 * 1024
+// Includes chunk framing, and bounds bytes queued behind a running request.
+const MAX_BUFFER_BYTES = MAX_BODY_BYTES + 1024 * 1024
+
+class HttpError extends Error {
+  constructor (readonly status: number, message: string) {
+    super(message)
+  }
+}
+
+interface ParsedRequest {
+  method: string
+  path: string
+  headers: Record<string, string>
+  body: string
+  end: number
+  keepAlive: boolean
+}
+
+/** Parse one complete HTTP request. null means more bytes are required. */
+export function parseHttpRequest (buffer: Buffer): ParsedRequest | null {
+  const headerEnd = buffer.indexOf('\r\n\r\n')
+  if (headerEnd < 0) {
+    if (buffer.length > MAX_HEADER_BYTES) throw new HttpError(431, 'Headers too large')
+    return null
+  }
+  if (headerEnd > MAX_HEADER_BYTES) throw new HttpError(431, 'Headers too large')
+  const lines = buffer.subarray(0, headerEnd).toString('latin1').split('\r\n')
+  const requestLine = /^([A-Z]+) (\/\S*) HTTP\/(1\.[01])$/.exec(lines[0])
+  if (!requestLine) throw new HttpError(400, 'Invalid request line')
+  const [, method, path, version] = requestLine
+  const headers: Record<string, string> = Object.create(null)
+  for (const line of lines.slice(1)) {
+    const match = /^([!#$%&'*+.^_`|~\da-zA-Z-]+):[\t ]*([^\r\n]*)$/.exec(line)
+    if (!match) throw new HttpError(400, 'Invalid header')
+    const key = match[1].toLowerCase()
+    const value = match[2].trim()
+    if (/[\x00-\x08\x0a-\x1f\x7f]/.test(value)) throw new HttpError(400, 'Invalid header value')
+    if (headers[key] !== undefined) {
+      if (['content-length', 'transfer-encoding', 'host', 'mcp-session-id'].includes(key)) {
+        throw new HttpError(400, 'Duplicate framing or session header')
+      }
+      headers[key] += `, ${value}`
+    } else headers[key] = value
+  }
+  if (version === '1.1' && !headers.host) throw new HttpError(400, 'Host header is required')
+  const bodyStart = headerEnd + 4
+  let end = bodyStart
+  let bytes: Buffer
+  if (headers['transfer-encoding'] !== undefined) {
+    if (headers['content-length'] !== undefined || headers['transfer-encoding'].toLowerCase() !== 'chunked') {
+      throw new HttpError(400, 'Unsupported or ambiguous request framing')
+    }
+    const chunks: Buffer[] = []
+    let total = 0
+    while (true) {
+      const lineEnd = buffer.indexOf('\r\n', end)
+      if (lineEnd < 0) {
+        if (buffer.length - end > MAX_HEADER_BYTES) throw new HttpError(400, 'Invalid chunk size')
+        return null
+      }
+      const sizeLine = buffer.subarray(end, lineEnd).toString('ascii')
+      if (!/^[\da-fA-F]+(?:;[^\r\n]*)?$/.test(sizeLine)) throw new HttpError(400, 'Invalid chunk size')
+      const size = Number.parseInt(sizeLine.split(';')[0], 16)
+      if (!Number.isSafeInteger(size) || total + size > MAX_BODY_BYTES) throw new HttpError(413, 'Body too large')
+      end = lineEnd + 2
+      if (size === 0) {
+        // Trailer fields are consumed, never promoted into request headers.
+        const trailerStart = end
+        while (true) {
+          const trailerEnd = buffer.indexOf('\r\n', end)
+          if (trailerEnd < 0) {
+            if (buffer.length - trailerStart > MAX_HEADER_BYTES) throw new HttpError(431, 'Trailers too large')
+            return null
+          }
+          if (trailerEnd - trailerStart > MAX_HEADER_BYTES) throw new HttpError(431, 'Trailers too large')
+          if (trailerEnd === end) { end += 2; break }
+          if (!/^[!#$%&'*+.^_`|~\da-zA-Z-]+:/.test(buffer.subarray(end, trailerEnd).toString('latin1'))) {
+            throw new HttpError(400, 'Invalid trailer')
+          }
+          end = trailerEnd + 2
+        }
+        break
+      }
+      if (buffer.length < end + size + 2) return null
+      if (buffer.toString('ascii', end + size, end + size + 2) !== '\r\n') throw new HttpError(400, 'Invalid chunk terminator')
+      chunks.push(buffer.subarray(end, end + size))
+      total += size
+      end += size + 2
+    }
+    bytes = Buffer.concat(chunks, total)
+    delete headers['transfer-encoding']
+    headers['content-length'] = String(total)
+  } else {
+    const rawLength = headers['content-length'] ?? '0'
+    if (!/^\d+$/.test(rawLength)) throw new HttpError(400, 'Invalid content length')
+    const length = Number(rawLength)
+    if (!Number.isSafeInteger(length) || length > MAX_BODY_BYTES) throw new HttpError(413, 'Body too large')
+    end += length
+    if (buffer.length < end) return null
+    bytes = buffer.subarray(bodyStart, end)
+  }
+  const connection = headers.connection?.toLowerCase().split(/\s*,\s*/) ?? []
+  return {
+    method, path, headers, body: bytes.toString('utf8'), end,
+    keepAlive: !connection.includes('close') && (version === '1.1' || connection.includes('keep-alive'))
+  }
+}
 
 function getStatusText (status: number): string {
   const texts: Record<number, string> = {
-    200: 'OK',
-    201: 'Created',
-    202: 'Accepted',
-    204: 'No Content',
-    400: 'Bad Request',
-    404: 'Not Found',
-    405: 'Method Not Allowed',
-    409: 'Conflict',
-    500: 'Internal Server Error'
+    200: 'OK', 201: 'Created', 202: 'Accepted', 204: 'No Content',
+    400: 'Bad Request', 403: 'Forbidden', 404: 'Not Found',
+    405: 'Method Not Allowed', 406: 'Not Acceptable', 409: 'Conflict',
+    413: 'Content Too Large', 415: 'Unsupported Media Type',
+    431: 'Request Header Fields Too Large', 500: 'Internal Server Error',
+    503: 'Service Unavailable'
   }
   return texts[status] || 'Unknown'
 }
 
-/**
- * Whether an HTTP request carries an MCP InitializeRequest. Only initialize
- * requests may create a new session — anything else without a session ID is
- * a client error, not a new connection. Per spec an InitializeRequest must
- * not be part of a JSON-RPC batch, so only a sole non-batched message counts.
- */
 function isInitializeRequestBody (method: string, body: string): boolean {
   if (method !== 'POST' || !body) return false
   try {
     const parsed: unknown = JSON.parse(body)
-    if (Array.isArray(parsed)) return false
-    return (
-      typeof parsed === 'object' &&
-      parsed !== null &&
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) &&
       (parsed as { method?: unknown }).method === 'initialize'
-    )
-  } catch {
-    return false
+  } catch { return false }
+}
+
+function hasClientActivity (method: string, body: string): boolean {
+  if (method !== 'POST') return false
+  try {
+    const message: unknown = JSON.parse(body)
+    if (!message || typeof message !== 'object') return false
+    const requestMethod = (message as { method?: unknown }).method
+    // Responses to server pings and client keep-alive pings are liveness only.
+    return typeof requestMethod === 'string' && requestMethod !== 'ping'
+  } catch { return false }
+}
+
+/** The SDK's JSON-response promise may remain pending after transport.close(). */
+async function awaitResponse (pending: Promise<Response>, signal: AbortSignal): Promise<Response> {
+  void pending.then((response) => {
+    if (signal.aborted) void response.body?.cancel().catch(() => {})
+  }, () => {})
+  let abort: () => void = () => {}
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    abort = () => reject(new DOMException('Connection closed', 'AbortError'))
+    if (signal.aborted) abort()
+    else signal.addEventListener('abort', abort, { once: true })
+  })
+  try { return await Promise.race([pending, cancelled]) } finally {
+    signal.removeEventListener('abort', abort)
   }
 }
 
 export default function createNetServer (
-  {
-    createServer
-  }: { createServer: (callback: (socket: Socket) => void) => NetServer },
-  {
-    port,
-    endpoint,
-    keepAlive = DEFAULT_KEEP_ALIVE,
-    sessionConfig
-  }: {
+  { createServer }: { createServer: (callback: (socket: Socket) => void) => NetServer },
+  { port, endpoint, keepAlive, sessionConfig }: {
     endpoint: string
     port: number
-    host?: string
     keepAlive?: Partial<KeepAliveConfig>
     sessionConfig?: Partial<SessionConfig>
   }
-): [NetServer, SessionTransports] {
+): [NetServer, SessionTransports, ShutdownServer] {
   const sessionTransports: SessionTransports = new Map()
+  // Includes transports still connecting or rejected before an ID is assigned.
+  const allSessions = new Set<SessionTransport>()
+  const closingSessions = new Map<SessionTransport, Promise<void>>()
+  const sockets = new Set<Socket>()
   const keepAliveConfig = { ...DEFAULT_KEEP_ALIVE, ...keepAlive }
+  let stopping = false
+  let shutdownPromise: Promise<void> | undefined
 
-  // Apply session configuration if provided
-  if (sessionConfig) {
-    sessionManager.configure(sessionConfig)
+  if (sessionConfig) sessionManager.configure(sessionConfig)
+
+  function closeSession (session: SessionTransport): Promise<void> {
+    const existing = closingSessions.get(session)
+    if (existing) return existing
+    if (!allSessions.has(session)) return Promise.resolve()
+    const sessionId = session.transport.sessionId
+    if (sessionId) {
+      sessionTransports.delete(sessionId)
+      workspaceManager.closeSession(sessionId)
+    }
+    // Defer until the promise is stored to make SDK onclose callbacks reentrant.
+    const closing = Promise.resolve().then(async () => {
+      if (sessionId) sessionManager.remove(sessionId)
+      try { await session.server.close() } catch (error) {
+        console.error('[MCP] Error closing session server:', error)
+      }
+      try { await session.transport.close() } catch (error) {
+        console.error('[MCP] Error closing session transport:', error)
+      }
+      allSessions.delete(session)
+    }).finally(() => closingSessions.delete(session))
+    closingSessions.set(session, closing)
+    return closing
   }
 
-  // Set up ping callback for session keep-alive.
-  // Sends a real MCP ping request to the client to verify the connection is alive.
-  sessionManager.setPingCallback(async (sessionId: string) => {
+  sessionManager.setRemovalCallback((sessionId) => {
     const session = sessionTransports.get(sessionId)
-    if (!session) return false
-
+    if (session) return closeSession(session)
+    workspaceManager.closeSession(sessionId)
+  })
+  sessionManager.setPingCallback(async (sessionId) => {
+    const session = sessionTransports.get(sessionId)
+    if (!session || stopping) return false
     try {
-      // Send a JSON-RPC ping and wait for the client's response (pong).
-      // Bounded by pingTimeoutMs: if the client has no open SSE stream, the
-      // SDK silently drops server→client requests and the ping would
-      // otherwise wait for the SDK's 60s default request timeout, stacking
-      // pending pings.
       await session.server.server.request(
-        { method: 'ping' },
-        EmptyResultSchema,
-        { timeout: keepAliveConfig.pingTimeoutMs }
+        { method: 'ping' }, EmptyResultSchema, { timeout: keepAliveConfig.pingTimeoutMs }
       )
       return true
-    } catch {
-      // Ping was not answered — undeliverable (no SSE stream) or client gone.
-      // Either way this is informational only; the inactivity timeout reaps.
-      return false
-    }
+    } catch { return false }
   })
 
-  // Register callback to close transport when sessionManager removes a session (e.g., timeout)
-  sessionManager.setRemovalCallback(async (sessionId: string) => {
-    const session = sessionTransports.get(sessionId)
-    if (session) {
-      console.log(`[MCP] Closing transport for session: ${sessionId.slice(0, 8)}...`)
-      try {
-        await session.transport.close()
-      } catch (error) {
-        console.error('[MCP] Error closing transport:', error)
-      } finally {
-        sessionTransports.delete(sessionId)
-      }
-    }
-  })
-
-  const httpServer = createServer((socket: Socket) => {
+  const httpServer = createServer((socket) => {
+    if (stopping) { socket.destroy(); return }
+    sockets.add(socket)
     let buffer = Buffer.alloc(0)
     let socketEnded = false
+    let processing = false
+    let activeReader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    let requestAbort: AbortController | undefined
+    let heartbeat: ReturnType<typeof setInterval> | undefined
 
-    // Configure TCP keep-alive for connection health
-    if (keepAliveConfig.enabled) {
-      socket.setKeepAlive(true, keepAliveConfig.initialDelay)
-    }
-
-    // OS-level idle timeout: if no I/O happens for this long, kill the
-    // socket. This catches half-open connections that TCP keep-alive misses
-    // (e.g., NAT entries silently dropped by intermediaries).
-    if (keepAliveConfig.idleTimeoutMs > 0) {
-      socket.setTimeout(keepAliveConfig.idleTimeoutMs)
-      socket.on('timeout', () => {
-        if (!socket.destroyed) {
-          console.log('[MCP] Socket idle timeout — closing connection')
-          socket.destroy()
-        }
-      })
-    }
-
-    socket.on('data', (chunk: Buffer) => {
-      if (socketEnded) return
-      buffer = Buffer.concat([buffer, chunk])
-      processHttpRequests().catch(err => {
-        console.error('[MCP] Unhandled error in processHttpRequests:', err)
-        // Try to send error response if socket is still writable
-        if (!socket.destroyed) {
-          try {
-            sendResponse(
-              socket,
-              500,
-              { 'content-type': 'application/json' },
-              JSON.stringify({ error: 'Internal server error' }),
-              undefined
-            )
-          } catch (sendErr) {
-            console.error('[MCP] Failed to send error response:', sendErr)
-            socket.destroy()
-          }
-        }
-      })
-    })
-
-    socket.on('error', (err: Error) => {
-      // ECONNRESET is common when clients disconnect abruptly - don't spam logs
-      if (err.message !== 'read ECONNRESET') {
-        console.error('[MCP] Socket error:', err.message)
-      }
-      // Clean up the socket
+    if (keepAliveConfig.enabled) socket.setKeepAlive(true, keepAliveConfig.initialDelay)
+    socket.setTimeout(keepAliveConfig.idleTimeoutMs)
+    socket.on('timeout', () => socket.destroy())
+    socket.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ECONNRESET') console.error('[MCP] Socket error:', error.message)
       socket.destroy()
     })
-
     socket.on('close', () => {
-      // Clean up buffer when socket closes
+      socketEnded = true
+      sockets.delete(socket)
       buffer = Buffer.alloc(0)
+      stopStream()
+    })
+    socket.on('data', (chunk: Buffer) => {
+      if (socketEnded) return
+      if (buffer.length + chunk.length > MAX_BUFFER_BYTES) { socket.destroy(); return }
+      buffer = Buffer.concat([buffer, chunk])
+      // A single consumer owns this socket until its current response finishes.
+      if (!processing) void processHttpRequests()
     })
 
-    async function processHttpRequests () {
-      while (true) {
-        // Stop processing if socket is no longer writable
-        if (socketEnded || socket.destroyed || !socket.writable) {
-          return
-        }
+    function writable (): boolean {
+      return !socketEnded && !socket.destroyed && socket.writable
+    }
 
-        // Look for end of HTTP headers
-        const headerEnd = buffer.indexOf('\r\n\r\n')
-        if (headerEnd === -1) return
+    function stopStream (): void {
+      if (heartbeat) clearInterval(heartbeat)
+      heartbeat = undefined
+      requestAbort?.abort()
+      if (activeReader) void activeReader.cancel().catch(() => {})
+    }
 
-        const headerSection = buffer.subarray(0, headerEnd).toString()
-        const lines = headerSection.split('\r\n')
-        const [method, path] = lines[0].split(' ')
-
-        // Parse headers
-        const headers: Record<string, string> = {}
-        for (let i = 1; i < lines.length; i++) {
-          const colonIdx = lines[i].indexOf(':')
-          if (colonIdx > 0) {
-            const key = lines[i].substring(0, colonIdx).trim().toLowerCase()
-            const value = lines[i].substring(colonIdx + 1).trim()
-            headers[key] = value
+    async function writeChunk (chunk: string | Uint8Array): Promise<void> {
+      if (!writable()) return
+      if (!socket.write(chunk)) {
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            socket.off('drain', done)
+            socket.off('close', done)
+            resolve()
           }
-        }
-
-        // Calculate body boundaries
-        const bodyStart = headerEnd + 4
-        const contentLength = parseInt(headers['content-length'] || '0', 10)
-        const requestEnd = bodyStart + contentLength
-
-        // Wait for complete request body
-        if (buffer.length < requestEnd) return
-
-        const body = buffer.subarray(bodyStart, requestEnd).toString()
-        buffer = buffer.subarray(requestEnd)
-
-        // Build Web Standard Request
-        const url = `http://localhost:${port}${path}`
-        const webHeaders = new Headers()
-        for (const [key, value] of Object.entries(headers)) {
-          webHeaders.set(key, value)
-        }
-
-        const requestInit: RequestInit = {
-          method,
-          headers: webHeaders
-        }
-
-        // Add body for non-GET/HEAD requests
-        if (method !== 'GET' && method !== 'HEAD' && body) {
-          requestInit.body = body
-        }
-
-        const webRequest = new Request(url, requestInit)
-
-        // Health check endpoint for monitoring
-        const pathWithoutQuery = path.split('?')[0]
-        if (pathWithoutQuery === '/health' || pathWithoutQuery === endpoint + '/health') {
-          const healthStatus = {
-            status: 'ok',
-            timestamp: new Date().toISOString(),
-            sessions: {
-              active: sessionManager.getCount(),
-              config: sessionManager.getConfig()
-            }
-          }
-          sendResponse(
-            socket,
-            200,
-            { 'content-type': 'application/json' },
-            JSON.stringify(healthStatus),
-            headers['connection']
-          )
-          continue
-        }
-
-        // Ready check endpoint (lighter weight than health)
-        if (pathWithoutQuery === '/ready' || pathWithoutQuery === endpoint + '/ready') {
-          sendResponse(
-            socket,
-            200,
-            { 'content-type': 'application/json' },
-            JSON.stringify({ ready: true }),
-            headers['connection']
-          )
-          continue
-        }
-
-        // Check endpoint - must match exactly or have query string/trailing content
-        if (
-          pathWithoutQuery !== endpoint &&
-          !path.startsWith(endpoint + '/') &&
-          !path.startsWith(endpoint + '?')
-        ) {
-          sendResponse(
-            socket,
-            404,
-            { 'content-type': 'text/plain' },
-            'Not Found',
-            headers['connection']
-          )
-          continue
-        }
-
-        try {
-          // Get or create transport for this session
-          const sessionId = headers['mcp-session-id']
-          let session = sessionId ? sessionTransports.get(sessionId) : null
-
-          // Per MCP spec, an unknown or expired session ID gets 404 Not Found,
-          // signalling spec-compliant clients to transparently start a new
-          // session with a fresh InitializeRequest. (409 is not in the spec
-          // and leaves clients stuck until restart.)
-          if (sessionId && !session) {
-            console.log(
-              `[MCP] Unknown session ID: ${sessionId.slice(0, 8)}... (session expired or not found)`
-            )
-            sendResponse(
-              socket,
-              404,
-              { 'content-type': 'application/json' },
-              JSON.stringify({
-                jsonrpc: '2.0',
-                error: {
-                  code: -32001,
-                  message: 'Session not found. Please reinitialize.'
-                },
-                id: null
-              }),
-              headers['connection']
-            )
-            continue
-          }
-
-          // Only an InitializeRequest may create a new session. Clients
-          // (e.g., the SDK client inside mcp-remote) can send GETs,
-          // notifications, or DELETEs without a session header while an
-          // initialize is in flight — those must be rejected, not treated
-          // as new connections.
-          if (!session && !isInitializeRequestBody(method, body)) {
-            sendResponse(
-              socket,
-              400,
-              { 'content-type': 'application/json' },
-              JSON.stringify({
-                jsonrpc: '2.0',
-                error: {
-                  code: -32000,
-                  message: 'Bad Request: Mcp-Session-Id header is required'
-                },
-                id: null
-              }),
-              headers['connection']
-            )
-            continue
-          }
-
-          // No session yet and this is an initialize request: create a new
-          // session with its own server and transport
-          if (!session) {
-            const sessionServer = createMcpServer()
-
-            // Register all tools, resources, and prompts on this session's server
-            registerToolsOnServer(sessionServer)
-            registerResourcesOnServer(sessionServer)
-            registerPromptsOnServer(sessionServer)
-
-            // Filled in below before handleRequest runs; onsessioninitialized
-            // (fired during handleRequest) closes over this object, which
-            // avoids a shared temporary map key that concurrent initialize
-            // requests could clobber.
-            const newSession = { server: sessionServer } as {
-              transport: WebStandardStreamableHTTPServerTransport
-              server: McpServer
-            }
-
-            const transport = new WebStandardStreamableHTTPServerTransport({
-              sessionIdGenerator: () => crypto.randomUUID(),
-              enableJsonResponse: true,
-              onsessioninitialized: (newSessionId: string) => {
-                console.log(
-                  `[MCP] Session initialized: ${newSessionId.slice(0, 8)}...`
-                )
-                sessionManager.add(newSessionId)
-                sessionTransports.set(newSessionId, newSession)
-
-                // Hook into oninitialized to capture client info
-                const underlyingServer = sessionServer.server
-                underlyingServer.oninitialized = () => {
-                  const clientInfo = underlyingServer.getClientVersion()
-                  if (clientInfo) {
-                    sessionManager.updateClientInfo(
-                      newSessionId,
-                      clientInfo.name,
-                      clientInfo.version
-                    )
-                  }
-                }
-              },
-              onsessionclosed: (closedSessionId: string) => {
-                console.log(
-                  `[MCP] Session closed: ${closedSessionId.slice(0, 8)}...`
-                )
-                // Delete from sessionTransports BEFORE calling sessionManager.remove()
-                // to prevent the removal callback from trying to close an already-closing transport
-                sessionTransports.delete(closedSessionId)
-                sessionManager.remove(closedSessionId)
-              }
-            })
-
-            // Connect this session's server to its transport
-            await sessionServer.connect(transport)
-
-            newSession.transport = transport
-            session = newSession
-          }
-
-          // Update session activity
-          if (sessionId) {
-            sessionManager.updateActivity(sessionId)
-          }
-
-          // Let the transport handle the MCP protocol
-          const webResponse = await session.transport.handleRequest(webRequest)
-
-          // Convert Web Standard Response to HTTP
-          const responseHeaders: Record<string, string> = {}
-          webResponse.headers.forEach((value: string, key: string) => {
-            responseHeaders[key] = value
-          })
-
-          const contentType = webResponse.headers.get('content-type') || ''
-
-          // Ensure content-type is set for non-SSE responses (some clients require it)
-          if (!contentType && webResponse.status !== 204) {
-            responseHeaders['content-type'] = 'application/json'
-          }
-
-          // Handle SSE streams differently from regular responses
-          if (contentType.includes('text/event-stream')) {
-            // Send headers for SSE
-            sendSSEHeaders(socket, webResponse.status, responseHeaders)
-
-            // Stream the body
-            if (webResponse.body) {
-              const reader = webResponse.body.getReader()
-              const decoder = new TextDecoder()
-
-              // SSE heartbeat — write a comment line during silent periods so
-              // proxies/firewalls/NAT don't drop the idle TCP connection.
-              // Comments (`:`-prefixed lines) are ignored by SSE parsers.
-              // We only emit when there's been no real chunk for the full
-              // interval, to avoid splitting partial events.
-              let lastChunkAt = Date.now()
-              const heartbeatMs = keepAliveConfig.sseHeartbeatIntervalMs
-              const heartbeat = heartbeatMs > 0
-                ? setInterval(() => {
-                    if (socketEnded || socket.destroyed || !socket.writable) return
-                    if (Date.now() - lastChunkAt < heartbeatMs) return
-                    try {
-                      socket.write(': keepalive\n\n')
-                      lastChunkAt = Date.now()
-                    } catch (err) {
-                      console.error('[MCP] SSE heartbeat write failed:', err)
-                    }
-                  }, heartbeatMs)
-                : null
-
-              try {
-                while (true) {
-                  // Check socket is still writable before each chunk
-                  if (socketEnded || socket.destroyed || !socket.writable) break
-
-                  const { done, value } = await reader.read()
-                  if (done) break
-
-                  const chunk = decoder.decode(value, { stream: true })
-                  socket.write(chunk)
-                  lastChunkAt = Date.now()
-                }
-              } catch (streamError) {
-                console.error('[MCP] SSE stream error:', streamError)
-              } finally {
-                if (heartbeat) clearInterval(heartbeat)
-                socketEnded = true
-                socket.end()
-              }
-            } else {
-              socketEnded = true
-              socket.end()
-            }
-          } else {
-            // Regular response
-            const responseBody = await webResponse.text()
-            sendResponse(
-              socket,
-              webResponse.status,
-              responseHeaders,
-              responseBody,
-              headers['connection']
-            )
-          }
-        } catch (error) {
-          console.error('[MCP] Request handler error:', error)
-          sendResponse(
-            socket,
-            500,
-            { 'content-type': 'application/json' },
-            JSON.stringify({ error: String(error) }),
-            headers['connection']
-          )
-        }
+          socket.once('drain', done)
+          socket.once('close', done)
+        })
       }
     }
 
-    function sendSSEHeaders (
-      sock: Socket,
-      status: number,
-      headers: Record<string, string>
-    ): boolean {
-      // Don't write to an already-ended socket
-      if (socketEnded || sock.destroyed || !sock.writable) {
-        return false
-      }
-
-      let response = `HTTP/1.1 ${status} ${getStatusText(status)}\r\n`
-
-      // Remove content-length for SSE streams
-      delete headers['content-length']
-
-      // Ensure proper SSE headers
-      headers['cache-control'] = 'no-cache'
-      headers['connection'] = 'keep-alive'
-
-      for (const [key, value] of Object.entries(headers)) {
-        response += `${key}: ${value}\r\n`
-      }
-      response += '\r\n'
-
-      sock.write(response)
-      return true
+    function writeHeaders (status: number, headers: Record<string, string>): void {
+      headers.date ??= new Date().toUTCString()
+      let text = `HTTP/1.1 ${status} ${getStatusText(status)}\r\n`
+      for (const [key, value] of Object.entries(headers)) text += `${key}: ${value}\r\n`
+      socket.write(text + '\r\n')
     }
 
-    function sendResponse (
-      sock: Socket,
-      status: number,
-      headers: Record<string, string>,
-      body: string,
-      connection?: string
-    ): boolean {
-      // Don't write to an already-ended socket
-      if (socketEnded || sock.destroyed || !sock.writable) {
-        return false
-      }
-
-      let response = `HTTP/1.1 ${status} ${getStatusText(status)}\r\n`
-
-      // Ensure required HTTP headers
-      const bodyBytes = Buffer.byteLength(body)
-      headers['content-length'] = bodyBytes.toString()
-
-      // Set connection header based on client request. HTTP/1.1 defaults to
-      // keep-alive unless the client explicitly opted out with `close`.
-      const keepAlive = connection?.toLowerCase() !== 'close'
-      headers['connection'] = keepAlive ? 'keep-alive' : 'close'
-
-      // Tell the client how long we'll hold an idle connection. Helps clients
-      // size their pools and avoid sending requests on a socket we're about
-      // to close.
+    function sendResponse (status: number, headers: Record<string, string>, body: string, request?: ParsedRequest): void {
+      if (!writable()) return
+      const keepAlive = request?.keepAlive === true && !stopping
+      delete headers['transfer-encoding']
+      headers['content-length'] = String(Buffer.byteLength(body))
+      headers.connection = keepAlive ? 'keep-alive' : 'close'
       if (keepAlive && keepAliveConfig.httpKeepAliveTimeoutSec > 0) {
         headers['keep-alive'] = `timeout=${keepAliveConfig.httpKeepAliveTimeoutSec}`
       }
-
-      // Add Date header for HTTP/1.1 compliance
-      if (!headers['date']) {
-        headers['date'] = new Date().toUTCString()
-      }
-
-      for (const [key, value] of Object.entries(headers)) {
-        response += `${key}: ${value}\r\n`
-      }
-      response += '\r\n'
-      response += body
-
-      // Write response and wait for it to be flushed before closing
-      if (!keepAlive) {
+      writeHeaders(status, headers)
+      const responseBody = request?.method === 'HEAD' ? '' : body
+      if (keepAlive) socket.write(responseBody)
+      else {
         socketEnded = true
-        // Use callback to ensure data is flushed before closing
-        sock.write(response, () => {
-          sock.end()
-        })
-      } else {
-        sock.write(response)
+        socket.end(responseBody)
+      }
+    }
+
+    function sendError (status: number, message: string, request?: ParsedRequest): void {
+      sendResponse(status, { 'content-type': 'application/json' }, JSON.stringify({
+        jsonrpc: '2.0', error: { code: status === 404 ? -32001 : -32000, message }, id: null
+      }), request)
+    }
+
+    async function sendWebResponse (response: Response, request: ParsedRequest): Promise<void> {
+      if (!writable()) {
+        await response.body?.cancel()
+        return
+      }
+      const headers: Record<string, string> = {}
+      response.headers.forEach((value, key) => { headers[key] = value })
+      if (!headers['content-type'] && response.status !== 204) headers['content-type'] = 'application/json'
+      if (!headers['content-type']?.includes('text/event-stream')) {
+        sendResponse(response.status, headers, await response.text(), request)
+        return
       }
 
-      return true
+      delete headers['content-length']
+      delete headers['transfer-encoding']
+      headers['cache-control'] = 'no-cache'
+      // SSE is close-delimited. A later HTTP response must never enter its body.
+      headers.connection = 'close'
+      writeHeaders(response.status, headers)
+      let lastChunkAt = Date.now()
+      // Only insert comments at an event boundary; do not corrupt partial events.
+      let tail = ''
+      let atEventBoundary = true
+      const heartbeatMs = keepAliveConfig.sseHeartbeatIntervalMs
+      if (heartbeatMs > 0) {
+        heartbeat = setInterval(() => {
+          if (!writable()) { stopStream(); return }
+          if (atEventBoundary && Date.now() - lastChunkAt >= heartbeatMs && !socket.writableNeedDrain) {
+            socket.write(': keepalive\n\n')
+            lastChunkAt = Date.now()
+          }
+        }, heartbeatMs)
+      }
+      const reader = response.body?.getReader()
+      activeReader = reader
+      try {
+        while (reader && writable()) {
+          const { done, value } = await reader.read()
+          if (done) break
+          tail = (tail + new TextDecoder().decode(value)).slice(-4)
+          atEventBoundary = tail.endsWith('\n\n') || tail.endsWith('\r\n\r\n')
+          await writeChunk(value)
+          lastChunkAt = Date.now()
+        }
+      } finally {
+        stopStream()
+        reader?.releaseLock()
+        activeReader = undefined
+        socketEnded = true
+        socket.end()
+      }
+    }
+
+    async function handleRequest (request: ParsedRequest): Promise<void> {
+      const { method, path, headers, body } = request
+      const pathWithoutQuery = path.split('?')[0]
+      if (pathWithoutQuery === '/health' || pathWithoutQuery === endpoint + '/health') {
+        sendResponse(200, { 'content-type': 'application/json' }, JSON.stringify({
+          status: 'ok', timestamp: new Date().toISOString(),
+          sessions: { active: sessionManager.getCount(), config: sessionManager.getConfig() }
+        }), request)
+        return
+      }
+      if (pathWithoutQuery === '/ready' || pathWithoutQuery === endpoint + '/ready') {
+        sendResponse(200, { 'content-type': 'application/json' }, JSON.stringify({ ready: true }), request)
+        return
+      }
+      if (pathWithoutQuery !== endpoint) {
+        sendError(404, 'Not Found', request)
+        return
+      }
+      const sessionId = headers['mcp-session-id']
+      let session = sessionId ? sessionTransports.get(sessionId) : undefined
+      if (sessionId && !session) { sendError(404, 'Session not found. Please reinitialize.', request); return }
+      if (!session && !isInitializeRequestBody(method, body)) {
+        sendError(400, 'Bad Request: Mcp-Session-Id header is required', request)
+        return
+      }
+      let created: SessionTransport | undefined
+      const endActivity = sessionId && hasClientActivity(method, body) ? sessionManager.beginActivity(sessionId) : () => {}
+      try {
+        if (!session) {
+          const sessionServer = createMcpServer()
+          const transport = new WebStandardStreamableHTTPServerTransport({
+            sessionIdGenerator: () => crypto.randomUUID(),
+            enableJsonResponse: true,
+            onsessioninitialized: (id) => {
+              if (stopping) return
+              sessionTransports.set(id, newSession)
+              workspaceManager.openSession(id)
+              sessionManager.add(id)
+              sessionServer.server.oninitialized = () => {
+                const info = sessionServer.server.getClientVersion()
+                if (info) sessionManager.updateClientInfo(id, info.name, info.version)
+              }
+            },
+            onsessionclosed: (id) => { sessionManager.remove(id) }
+          })
+          const newSession: SessionTransport = { transport, server: sessionServer }
+          created = newSession
+          allSessions.add(newSession)
+          registerToolsOnServer(sessionServer)
+          registerResourcesOnServer(sessionServer)
+          registerPromptsOnServer(sessionServer)
+          await sessionServer.connect(transport)
+          if (stopping || !writable()) {
+            // connect() can finish after shutdown already closed this object.
+            await sessionServer.close()
+            await transport.close()
+            return
+          }
+          session = newSession
+        }
+        requestAbort = new AbortController()
+        const webRequest = new Request(`http://127.0.0.1:${port}${path}`, {
+          method,
+          headers,
+          signal: requestAbort.signal,
+          ...(method !== 'GET' && method !== 'HEAD' && body ? { body } : {})
+        })
+        const response = await awaitResponse(session.transport.handleRequest(webRequest), requestAbort.signal)
+        await sendWebResponse(response, request)
+        // Invalid initialize requests allocate SDK objects but never a session ID.
+        if (created && (!created.transport.sessionId || response.status >= 400)) await closeSession(created)
+      } catch (error) {
+        if (created) await closeSession(created)
+        throw error
+      } finally {
+        endActivity()
+        requestAbort = undefined
+        if (created && (stopping || socket.destroyed || !created.transport.sessionId)) await closeSession(created)
+      }
+    }
+
+    async function processHttpRequests (): Promise<void> {
+      processing = true
+      try {
+        while (writable() && !stopping) {
+          const request = parseHttpRequest(buffer)
+          if (!request) return
+          buffer = buffer.subarray(request.end)
+          socket.setTimeout(keepAliveConfig.idleTimeoutMs)
+          await handleRequest(request)
+          if (writable()) socket.setTimeout(keepAliveConfig.httpKeepAliveTimeoutSec * 1000)
+        }
+      } catch (error) {
+        if (error instanceof HttpError) sendError(error.status, error.message)
+        else if (!(error instanceof Error && error.name === 'AbortError')) {
+          console.error('[MCP] Request handler error:', error)
+          sendError(500, 'Internal server error')
+        }
+      } finally {
+        processing = false
+      }
     }
   })
 
-  httpServer.listen(port, () => {
-    console.log(`[MCP] Server listening on http://localhost:${port}${endpoint}`)
+  const shutdown: ShutdownServer = () => {
+    if (shutdownPromise) return shutdownPromise
+    stopping = true
+    const closed = new Promise<void>((resolve) => {
+      httpServer.close(() => resolve())
+    })
+    for (const socket of sockets) socket.destroy()
+    // clear() invokes removal callbacks before detaching them and returns their completion.
+    const clearSessions = sessionManager.clear()
+    shutdownPromise = Promise.all([
+      closed, clearSessions, ...[...allSessions].map(closeSession)
+    ]).then(() => {})
+    return shutdownPromise
+  }
+  httpServer.on('error', (error: Error) => {
+    console.error('[MCP] Server error:', error)
+    if (typeof Blockbench !== 'undefined') Blockbench.showQuickMessage(`MCP Server error: ${error.message}`, 3000)
+    void shutdown()
   })
-
-  httpServer.on('error', (err: Error) => {
-    console.error('[MCP] Server error:', err)
-    Blockbench.showQuickMessage(`MCP Server error: ${err.message}`, 3000)
+  httpServer.listen(port, '127.0.0.1', () => {
+    console.log(`[MCP] Server listening on http://127.0.0.1:${port}${endpoint}`)
   })
-
-  return [httpServer, sessionTransports]
+  return [httpServer, sessionTransports, shutdown]
 }

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { createTool, type ToolSpec } from "@/lib/factories";
 import { STATUS_STABLE } from "@/lib/constants";
+import { workspaceManager } from "@/lib/workspaces";
 
 export const createProjectParameters = z.object({
   name: z.string(),
@@ -13,11 +14,15 @@ export const createProjectParameters = z.object({
 });
 
 export const getProjectInfoParameters = z.object({});
+export const selectProjectParameters = z.object({
+  project_id: z.string().min(1).describe("UUID of an open project returned by list_projects. Must be unclaimed or owned by this workspace."),
+});
+export const listProjectsParameters = z.object({});
 
 export const projectToolDocs: ToolSpec[] = [
   {
     name: "create_project",
-    description: "Creates a new project with the given name and project type.",
+    description: "Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call.",
     annotations: {
       title: "Create Project",
       destructiveHint: true,
@@ -37,12 +42,27 @@ export const projectToolDocs: ToolSpec[] = [
     parameters: getProjectInfoParameters,
     status: STATUS_STABLE,
   },
+  {
+    name: "select_project",
+    description: "Binds an existing open project to this workspace. Projects owned by another workspace cannot be selected. Use this to resume after reconnecting.",
+    annotations: { title: "Select Project", destructiveHint: false },
+    parameters: selectProjectParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "list_projects",
+    description: "Lists open projects available to this workspace, including its owned projects and unclaimed projects. Use select_project with a returned UUID to resume work.",
+    annotations: { title: "List Projects", readOnlyHint: true },
+    parameters: listProjectsParameters,
+    status: STATUS_STABLE,
+  },
 ];
 
 export function registerProjectTools() {
   createTool(projectToolDocs[0].name, {
     ...projectToolDocs[0],
-    async execute({ name, format }) {
+    async execute({ name, format }, context) {
+      if (!Formats[format]) throw new Error(`Unknown project format: ${format}`);
       const created = newProject(Formats[format]);
 
       if (!created) {
@@ -50,6 +70,7 @@ export function registerProjectTools() {
       }
 
       Project!.name = name;
+      context?.workspace?.bindProject(Project!.uuid);
 
       return `Created project with name "${name}" (UUID: ${Project?.uuid}) and format "${format}".`;
     },
@@ -103,4 +124,22 @@ export function registerProjectTools() {
       );
     },
   }, projectToolDocs[1].status);
+
+  createTool(projectToolDocs[2].name, {
+    ...projectToolDocs[2],
+    async execute({ project_id }, context) {
+      if (!context?.workspace) throw new Error("select_project requires an MCP workspace.");
+      context.workspace.bindProject(project_id);
+      return JSON.stringify({ project_id, workspace_id: context.workspace.workspaceId });
+    },
+  }, projectToolDocs[2].status);
+
+  createTool(projectToolDocs[3].name, {
+    ...projectToolDocs[3],
+    async execute() {
+      return JSON.stringify(workspaceManager.getProjects().map(project => ({
+        uuid: project.uuid, name: project.name, format: project.format?.id,
+      })));
+    },
+  }, projectToolDocs[3].status);
 }

@@ -728,13 +728,13 @@ export function registerPaintTools() {
         pick_color_opacity,
         pick_combined_color,
       }) {
-        const settings: string[] = [];
+        const changes: string[] = [];
 
         // Mirror painting
         if (mirror_painting !== undefined) {
           setBarItemValue("mirror_painting", mirror_painting.enabled);
           Painter.mirror_painting = mirror_painting.enabled;
-          settings.push(`Mirror painting: ${mirror_painting.enabled}`);
+          changes.push(`Mirror painting: ${mirror_painting.enabled}`);
 
           if (
             mirror_painting.enabled &&
@@ -758,67 +758,67 @@ export function registerPaintTools() {
                 mirror_painting.texture_center.y,
               ];
             }
-            settings.push(`Mirror options updated`);
+            changes.push(`Mirror options updated`);
           }
         }
 
         // Lock alpha
         if (lock_alpha !== undefined) {
           Painter.lock_alpha = lock_alpha;
-          settings.push(`Lock alpha: ${lock_alpha}`);
+          changes.push(`Lock alpha: ${lock_alpha}`);
         }
 
         // Pixel perfect
         if (pixel_perfect !== undefined) {
           setBarItemValue("pixel_perfect_drawing", pixel_perfect);
-          settings.push(`Pixel perfect: ${pixel_perfect}`);
+          changes.push(`Pixel perfect: ${pixel_perfect}`);
         }
 
         // Color erase mode
         if (color_erase_mode !== undefined) {
           setBarItemValue("color_erase_mode", color_erase_mode);
           Painter.erase_mode = color_erase_mode;
-          settings.push(`Color erase mode: ${color_erase_mode}`);
+          changes.push(`Color erase mode: ${color_erase_mode}`);
         }
 
         // Settings that require accessing the settings object
         if (paint_side_restrict !== undefined) {
           // @ts-ignore
           settings.paint_side_restrict.value = paint_side_restrict;
-          settings.push(`Paint side restrict: ${paint_side_restrict}`);
+          changes.push(`Paint side restrict: ${paint_side_restrict}`);
         }
 
         if (brush_opacity_modifier !== undefined) {
           // @ts-ignore
           settings.brush_opacity_modifier.value = brush_opacity_modifier;
-          settings.push(`Brush opacity modifier: ${brush_opacity_modifier}`);
+          changes.push(`Brush opacity modifier: ${brush_opacity_modifier}`);
         }
 
         if (brush_size_modifier !== undefined) {
           // @ts-ignore
           settings.brush_size_modifier.value = brush_size_modifier;
-          settings.push(`Brush size modifier: ${brush_size_modifier}`);
+          changes.push(`Brush size modifier: ${brush_size_modifier}`);
         }
 
         if (paint_with_stylus_only !== undefined) {
           // @ts-ignore
           settings.paint_with_stylus_only.value = paint_with_stylus_only;
-          settings.push(`Paint with stylus only: ${paint_with_stylus_only}`);
+          changes.push(`Paint with stylus only: ${paint_with_stylus_only}`);
         }
 
         if (pick_color_opacity !== undefined) {
           // @ts-ignore
           settings.pick_color_opacity.value = pick_color_opacity;
-          settings.push(`Pick color opacity: ${pick_color_opacity}`);
+          changes.push(`Pick color opacity: ${pick_color_opacity}`);
         }
 
         if (pick_combined_color !== undefined) {
           // @ts-ignore
           settings.pick_combined_color.value = pick_combined_color;
-          settings.push(`Pick combined color: ${pick_combined_color}`);
+          changes.push(`Pick combined color: ${pick_combined_color}`);
         }
 
-        return `Updated paint settings: ${settings.join(", ")}`;
+        return `Updated paint settings: ${changes.join(", ")}`;
       },
     },
     paintToolDocs[6].status

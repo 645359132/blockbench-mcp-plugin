@@ -11,6 +11,7 @@ import {
   getChannelTextureInfo,
 } from "@/lib/util";
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
+import { awaitTextureLoad, cancelTextureLoad, textureFileDataUrl } from "@/lib/textureLoading";
 import {
   colorSchema,
   elementIdSchema,
@@ -395,69 +396,96 @@ export function registerTextureTools() {
       fill_color,
       group,
       layer_name,
-    }) {
-      Undo.initEdit({
-        textures: [],
-        collections: [],
-      });
-
-      let texture = new Texture({
-        name,
-        width,
-        height,
-        group,
-        pbr_channel,
-        internal: true,
-      });
-
-      if (data) {
-        if (data.startsWith("data:image/")) {
-          texture.source = data;
-          texture.width = width;
-          texture.height = height;
-        } else {
-          texture = texture.fromFile({
-            name: data.split(/[\/\\]/).pop() || data,
-            path: data.replace(/^file:\/\//, ""),
-          });
-        }
-
-        texture.load();
-        texture.fillParticle();
-        texture.layers_enabled = false;
-      } else {
-        const { ctx } = texture.getActiveCanvas();
-
-        if (fill_color) {
-          const color = Array.isArray(fill_color)
-            // @ts-ignore - tinycolor is available globally in Blockbench
-            ? tinycolor({
-              r: Number(fill_color[0]),
-              g: Number(fill_color[1]),
-              b: Number(fill_color[2]),
-              a: Number(fill_color[3] ?? 255),
-            })
-            // @ts-ignore - tinycolor ok
-            : tinycolor(fill_color);
-
-          ctx.fillStyle = color.toRgbString().toLowerCase();
-          ctx.fillRect(0, 0, texture.width, texture.height);
-        } else {
-          ctx.clearRect(0, 0, texture.width, texture.height);
-        }
-
-        texture.updateSource(ctx.canvas.toDataURL("image/png", 1));
-        texture.updateLayerChanges(true);
+    }, context) {
+      const workspace = context?.workspace;
+      const ownerProject = Project;
+      let source = data;
+      if (workspace && source && !source.startsWith("data:image/")) {
+        // @ts-ignore - requireNativeModule is a Blockbench global
+        const fs = requireNativeModule("fs", {
+          message: `MCP create_texture requested read access to import ${source}`,
+        });
+        if (!fs) throw new Error("File system access was denied. Pass an image data URL instead.");
+        source = textureFileDataUrl(source, (path) => fs.readFileSync(path));
       }
+      const textureGroup = workspace && group ? findTextureGroupOrThrow(group) : undefined;
+      const editingTextures: Texture[] = [];
+      Undo.initEdit({ textures: editingTextures, collections: [] });
+      let pendingTexture: Texture | undefined;
+      try {
+        const texture = new Texture({
+          name,
+          width,
+          height,
+          group: workspace ? undefined : group,
+          pbr_channel: workspace ? undefined : pbr_channel,
+          internal: true,
+        });
+        pendingTexture = texture;
+        await awaitTextureLoad(texture, () => {
+          if (source) {
+            if (source.startsWith("data:image/")) {
+              texture.source = source;
+              texture.width = width;
+              texture.height = height;
+            } else {
+              texture.fromFile({
+                name: source.split(/[\/\\]/).pop() || source,
+                path: source.replace(/^file:\/\//, ""),
+              });
+            }
 
-      texture.add();
+            texture.load();
+            texture.fillParticle();
+            texture.layers_enabled = false;
+          } else {
+            const { ctx } = texture.getActiveCanvas();
+            ctx.canvas.width = width;
+            ctx.canvas.height = height;
 
-      Undo.finishEdit("Agent created texture");
-      Canvas.updateAll();
+            if (fill_color) {
+              const color = Array.isArray(fill_color)
+                // @ts-ignore - tinycolor is available globally in Blockbench
+                ? tinycolor({
+                  r: Number(fill_color[0]),
+                  g: Number(fill_color[1]),
+                  b: Number(fill_color[2]),
+                  a: Number(fill_color[3] ?? 255),
+                })
+                // @ts-ignore - tinycolor ok
+                : tinycolor(fill_color);
 
-      return imageContent({
-        url: texture.getDataURL(),
-      });
+              ctx.fillStyle = color.toRgbString().toLowerCase();
+              ctx.fillRect(0, 0, texture.width, texture.height);
+            } else {
+              ctx.clearRect(0, 0, texture.width, texture.height);
+            }
+
+            texture.updateSource(ctx.canvas.toDataURL("image/png", 1));
+            texture.updateLayerChanges(true);
+          }
+
+          texture.add();
+          editingTextures.push(texture);
+        }, { isCurrentProject: workspace ? () => Project === ownerProject : undefined });
+
+        if (workspace) {
+          // Associating MER/height maps during construction schedules a native
+          // material refresh timer. Attach them after loading and update now.
+          if (textureGroup) texture.group = textureGroup.uuid;
+          if (pbr_channel) texture.pbr_channel = pbr_channel;
+          textureGroup?.updateMaterial();
+        }
+
+        const result = imageContent({ url: texture.getDataURL() });
+        Canvas.updateAll();
+        Undo.finishEdit("Agent created texture");
+        return result;
+      } catch (error) {
+        if (pendingTexture) cancelTextureLoad(pendingTexture);
+        Undo.cancelEdit();
+        throw error;
+      }
     },
   }, textureToolDocs[0].status);
 

@@ -14,12 +14,30 @@ import { settingsSetup, settingsTeardown } from "@/ui/settings";
 import { setupI18n } from "@/ui/i18n";
 import { sessionManager } from "@/lib/sessions";
 import { initPromptLoader } from "@/lib/promptLoader";
-import type { NetServer, SessionTransports } from "@/server/net";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ShutdownServer } from "@/server/net";
 import createNetServer from "@/server/net";
 import { getIcon } from "@/macros/getIcon" with { type: "macro" };
 
-let httpServer: NetServer | null = null;
-let sessionTransports: SessionTransports | null = null;
+let shutdownServer: ShutdownServer | null = null;
+let referenceServer: McpServer | null = null;
+let lifecycleGeneration = 0;
+let teardownPromise: Promise<void> = Promise.resolve();
+
+function stopNetwork(): Promise<void> {
+  const shutdown = shutdownServer;
+  const reference = referenceServer;
+  shutdownServer = null;
+  referenceServer = null;
+  return Promise.allSettled([
+    shutdown ? shutdown() : sessionManager.clear(),
+    reference?.close(),
+  ]).then((results) => {
+    for (const result of results) {
+      if (result.status === "rejected") console.error("[MCP] Shutdown error:", result.reason);
+    }
+  });
+}
 
 BBPlugin.register("mcp", {
   version: VERSION,
@@ -34,6 +52,10 @@ BBPlugin.register("mcp", {
   icon: getIcon(),
   variant: "desktop",
   async onload() {
+    const generation = ++lifecycleGeneration;
+    // A reload must wait for the previous listener to release the port.
+    await teardownPromise;
+    if (generation !== lifecycleGeneration) return;
     // Get network module with Blockbench permission handling
     // @ts-ignore - requireNativeModule is a Blockbench global
     const net = requireNativeModule("net", {
@@ -62,6 +84,8 @@ BBPlugin.register("mcp", {
     } catch (err) {
       console.error("[MCP] Prompt loader initialization failed — continuing without prompts:", err);
     }
+    // Unloading while the manifest loads must not resurrect the server.
+    if (generation !== lifecycleGeneration) return;
 
     // Create TCP server to handle HTTP requests
     const toFiniteNumber = (raw: unknown, fallback: number): number => {
@@ -76,43 +100,38 @@ BBPlugin.register("mcp", {
       Settings.get("mcp_sse_heartbeat"),
       15
     );
-    [httpServer, sessionTransports] = createNetServer(net, {
-      port: Number(Settings.get("mcp_port") || 3000),
-      endpoint: String(Settings.get("mcp_endpoint") || "/bb-mcp"),
-      keepAlive: {
-        sseHeartbeatIntervalMs: Math.max(0, sseHeartbeatSec) * 1000,
-      },
-      sessionConfig: {
-        inactivityTimeoutMs: Math.max(1, sessionTimeoutMin) * 60 * 1000,
-      },
-    });
+    try {
+      [, , shutdownServer] = createNetServer(net, {
+        port: Number(Settings.get("mcp_port") || 3000),
+        endpoint: String(Settings.get("mcp_endpoint") || "/bb-mcp"),
+        keepAlive: {
+          sseHeartbeatIntervalMs: Math.max(0, sseHeartbeatSec) * 1000,
+        },
+        sessionConfig: {
+          inactivityTimeoutMs: Math.max(1, sessionTimeoutMin) * 60 * 1000,
+        },
+      });
 
-    // Create a reference server for UI display purposes
-    const referenceServer = createServer();
-    uiSetup({
-      server: referenceServer,
-      tools,
-      resources,
-      prompts,
-    });
+      // Create a reference server for UI display purposes
+      referenceServer = createServer();
+      uiSetup({
+        server: referenceServer,
+        tools,
+        resources,
+        prompts,
+      });
+    } catch (error) {
+      console.error("[MCP] Server initialization failed:", error);
+      teardownPromise = stopNetwork();
+      uiTeardown();
+      settingsTeardown();
+    }
   },
 
   onunload() {
-    // Close HTTP server
-    if (httpServer) {
-      httpServer.close();
-      httpServer = null;
-    }
-
-    // Close all session transports
-    const values = Array.from(sessionTransports?.values() ?? []);
-    for (const session of values) {
-      session.transport.close();
-    }
-    sessionTransports?.clear();
-
-    // Clear all sessions
-    sessionManager.clear();
+    ++lifecycleGeneration;
+    // shutdown closes accepted sockets immediately and drains SDK cleanup.
+    teardownPromise = stopNetwork();
 
     uiTeardown();
     settingsTeardown();

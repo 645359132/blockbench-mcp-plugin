@@ -2,6 +2,7 @@
 /// <reference types="blockbench-types" />
 import { createResource } from "@/lib/factories";
 import { findByResourceId, makeResourceUri } from "@/lib/resourceUri";
+import { workspaceManager } from "@/lib/workspaces";
 
 // Register projects resource using the factory pattern
 createResource("projects", {
@@ -10,7 +11,7 @@ createResource("projects", {
   description:
     "Returns information about available projects in Blockbench. List URIs use the project's slugified name (e.g. `projects://my-character`) when unique, or `projects://<slug>~<uuid-prefix>` on collision. The read side also accepts the raw UUID or exact name. Use without an ID to list all projects.",
   async listCallback() {
-    const projects = ModelProject.all;
+    const projects = workspaceManager.getProjects();
     if (!projects || projects.length === 0) {
       return { resources: [] };
     }
@@ -24,7 +25,7 @@ createResource("projects", {
     };
   },
   async readCallback(uri, { id }) {
-    const projects = ModelProject.all;
+    const projects = workspaceManager.getProjects();
 
     if (!projects || projects.length === 0) {
       return {
