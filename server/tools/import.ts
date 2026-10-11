@@ -71,11 +71,14 @@ export function registerImportTools() {
 
       Codecs.bedrock.parse!(JSON.parse(geojson), "");
 
-      return new Promise((resolve, reject) => {
-        setTimeout(() => {
-          captureAppScreenshot().then(resolve).catch(reject);
-        }, 3000);
-      });
+      // Parsing updates the scene synchronously; two frames let the viewport repaint.
+      // A fixed multi-second delay here would hold the shared modeling queue for every
+      // agent, and frames pause while the window is hidden, so cap the wait.
+      const repainted = new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      await Promise.race([repainted, new Promise<void>((resolve) => setTimeout(resolve, 500))]);
+      return captureAppScreenshot();
     },
   }, importToolDocs[0].status);
 }

@@ -161,5 +161,20 @@ test('workspace_id and resource metadata isolate two agents sharing one SDK conn
   }
   const missingScope = await client.callTool({ name: 'wire_add_cube', arguments: { name: 'unbound', from: [0, 0, 0], to: [1, 1, 1] } })
   expect(missingScope.isError).toBe(true)
-  expect(JSON.stringify(missingScope.content)).toContain('no project')
+  expect(JSON.stringify(missingScope.content)).toContain('workspace_id')
+})
+
+test('a second create_project in a bound workspace is refused unless rebinding is explicit', async () => {
+  const { client } = await connect('rebind')
+  const first = await client.callTool({ name: 'create_project', arguments: { name: 'rebind-first' } })
+  expect(first.isError).not.toBe(true)
+  const second = await client.callTool({ name: 'create_project', arguments: { name: 'rebind-second' } })
+  expect(second.isError).toBe(true)
+  expect(JSON.stringify(second.content)).toContain('already bound')
+  expect(projects.some(project => project.name === 'rebind-second')).toBe(false)
+  const rebound = await client.callTool({ name: 'create_project', arguments: { name: 'rebind-second', rebind: true } })
+  expect(rebound.isError).not.toBe(true)
+  const edit = await client.callTool({ name: 'wire_add_cube', arguments: { name: 'cube', from: [0, 0, 0], to: [1, 1, 1] } })
+  expect(JSON.parse((edit.content as Array<{ text: string }>)[0].text).uuid)
+    .toBe(projects.find(project => project.name === 'rebind-second')?.uuid)
 })

@@ -17,15 +17,24 @@ function fixture() {
   let selected: TestProject | undefined = projects[0];
   let blockedProject: string | undefined;
   let editor = { camera: { x: 7 }, color: "user-color", time: 0 };
+  const locked = new Set<string>();
+  const selections: string[] = [];
   const manager = new WorkspaceManager({
     getProjects: () => projects,
     getActiveProject: () => selected,
     selectProject: (project) => {
       if (project.uuid === blockedProject) return false;
+      // Mirrors ModelProject.select(): a locked tab cannot be left or entered.
+      if (locked.has(project.uuid) || (selected && locked.has(selected.uuid))) return false;
       selected = project;
+      selections.push(project.uuid);
       return true;
     },
     unselectProject: () => { selected = undefined; },
+    lockProject: (project) => {
+      locked.add(project.uuid);
+      return () => { locked.delete(project.uuid); };
+    },
     captureState: () => structuredClone(editor),
     restoreState: (state) => { editor = structuredClone(state) as typeof editor; },
   });
@@ -35,7 +44,12 @@ function fixture() {
     (context) => context.bindProject(projectId)
   );
   return {
-    manager, projects, bind,
+    manager, projects, bind, locked, selections,
+    select: (uuid: string) => {
+      if (selected && locked.has(selected.uuid)) return false;
+      selected = projects.find((candidate) => candidate.uuid === uuid);
+      return true;
+    },
     current: () => selected,
     editor: () => editor,
     clearSelection: () => { selected = undefined; },
@@ -294,5 +308,95 @@ describe("session closure and cancellation", () => {
     manager.closeSession("two");
     await bind("one", "b", "other-agent");
     await expect(manager.run({ sessionId: "one" }, () => manager.assertExclusive())).rejects.toThrow("exclusive modeling workspace");
+  });
+});
+
+describe("shared editor scheduling", () => {
+  test("the bound project is locked while an operation runs and unlocked afterwards", async () => {
+    const { manager, bind, locked, select, current } = fixture();
+    await bind("one", "a");
+    const entered = deferred();
+    const resume = deferred();
+    const running = manager.run({ sessionId: "one" }, async () => {
+      entered.resolve();
+      await resume.promise;
+      return current()?.uuid;
+    });
+    await entered.promise;
+    expect([...locked]).toEqual(["a"]);
+    // A user clicking another tab mid-operation is refused.
+    expect(select("user")).toBe(false);
+    resume.resolve();
+    expect(await running).toBe("a");
+    expect(locked.size).toBe(0);
+    expect(current()?.uuid).toBe("user");
+  });
+
+  test("operations that create projects themselves are not locked", async () => {
+    const { manager, bind, locked } = fixture();
+    await bind("one", "a");
+    await manager.run({ sessionId: "one", requireProject: false, allowProjectSwitch: true }, () => {
+      expect(locked.size).toBe(0);
+    });
+  });
+
+  test("queued work switches directly between projects and restores the user's tab once", async () => {
+    const { manager, bind, selections, current, editor } = fixture();
+    manager.openSession("two");
+    await bind("one", "a");
+    await bind("two", "b");
+    selections.length = 0;
+    const entered = deferred();
+    const resume = deferred();
+    const seen: unknown[] = [];
+    const first = manager.run({ sessionId: "one" }, async () => {
+      entered.resolve();
+      await resume.promise;
+      editor().color = "agent-a";
+    });
+    await entered.promise;
+    const second = manager.run({ sessionId: "two" }, () => { seen.push(structuredClone(editor())); });
+    const third = manager.run({ sessionId: "one" }, () => { seen.push(structuredClone(editor())); });
+    resume.resolve();
+    await Promise.all([first, second, third]);
+    expect(selections).toEqual(["a", "b", "a", "user"]);
+    // A workspace's first call starts from the user's editor state, not the previous agent's.
+    expect(seen).toEqual([
+      { camera: { x: 7 }, color: "user-color", time: 0 },
+      { camera: { x: 7 }, color: "agent-a", time: 0 },
+    ]);
+    expect(current()?.uuid).toBe("user");
+    expect(editor().color).toBe("user-color");
+  });
+
+  test("a queued call times out with the busy operation's name and never runs", async () => {
+    const { manager, bind } = fixture();
+    await bind("one", "a");
+    const entered = deferred();
+    const resume = deferred();
+    const running = manager.run({ sessionId: "one", label: "export_model" }, async () => {
+      entered.resolve();
+      await resume.promise;
+    });
+    await entered.promise;
+    let called = false;
+    const queued = manager.run({ sessionId: "one", queueTimeoutMs: 10 }, () => { called = true; });
+    await expect(queued).rejects.toThrow('"export_model" has held the editor');
+    resume.resolve();
+    await running;
+    await manager.run({ sessionId: "one" }, () => {});
+    expect(called).toBe(false);
+  });
+
+  test("calls without workspace_id are refused once named workspaces share the session", async () => {
+    const { manager, bind } = fixture();
+    await bind("one", "a");
+    const strict = { sessionId: "one", requireExplicitWorkspace: true };
+    expect(await manager.run(strict, (context) => context.workspaceId)).toBe("default");
+    await bind("one", "b", "agent-b");
+    await expect(manager.run(strict, () => {})).rejects.toThrow("Pass your own workspace_id");
+    expect(await manager.run({ ...strict, workspaceId: "default" }, (context) => context.getProjectId())).toBe("a");
+    // Read-only resource requests keep the default fallback.
+    expect(await manager.run({ sessionId: "one" }, (context) => context.workspaceId)).toBe("default");
   });
 });

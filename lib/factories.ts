@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { IMCPTool, IMCPPrompt, IMCPResource, StatusType } from "@/types";
 import { getServer } from "@/server/server";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { workspaceManager, type WorkspaceContext } from "@/lib/workspaces";
+import { workspaceManager, type WorkspaceContext, type WorkspaceRequest } from "@/lib/workspaces";
 import { workspaceIdParameter } from "@/lib/workspaceSchema";
 import { sessionManager } from "@/lib/sessions";
 
@@ -119,14 +119,23 @@ const globalTools = new Set([
   "import_texture_set",
 ]);
 
-function requestWorkspace(extra: RequestContext, explicit?: unknown): string {
-  return workspaceIdParameter.parse(explicit ?? extra._meta?.["blockbench/workspace_id"]) ?? "default";
+/** Tools that bind a project rather than operate on the bound one. */
+const bindingTools = new Set(["create_project", "select_project", "list_projects"]);
+
+/**
+ * How long a call may wait behind other agents before failing with a "busy" error.
+ * Shorter than common MCP client timeouts so the caller sees why it waited.
+ */
+const QUEUE_WAIT_TIMEOUT_MS = 50_000;
+
+/** Returns undefined when the caller did not name a workspace. */
+function requestWorkspace(extra: RequestContext, explicit?: unknown): string | undefined {
+  return workspaceIdParameter.parse(explicit ?? extra._meta?.["blockbench/workspace_id"]);
 }
 
 async function runInWorkspace<T>(
   extra: RequestContext,
-  workspaceId: string,
-  requireProject: boolean,
+  options: Omit<WorkspaceRequest, "sessionId" | "signal">,
   operation: (workspace?: WorkspaceContext) => Promise<T>
 ): Promise<T> {
   if (!extra.sessionId) {
@@ -136,7 +145,7 @@ async function runInWorkspace<T>(
   const endActivity = sessionManager.beginActivity(extra.sessionId);
   try {
     return await workspaceManager.run({
-      sessionId: extra.sessionId, workspaceId, requireProject, signal: extra.signal,
+      ...options, sessionId: extra.sessionId, signal: extra.signal,
     }, operation);
   } finally {
     endActivity();
@@ -148,7 +157,14 @@ async function executeTool(name: string, definition: ToolDefinition, args: unkno
   const workspaceId = requestWorkspace(extra, input.workspace_id);
   // Parse the full schema as well: extracting its shape alone loses object refinements.
   const parameters = await definition.parameters.parseAsync(input);
-  return runInWorkspace(extra, workspaceId, !["create_project", "select_project", "list_projects"].includes(name), async workspace => {
+  return runInWorkspace(extra, {
+    workspaceId,
+    requireProject: !bindingTools.has(name),
+    requireExplicitWorkspace: true,
+    allowProjectSwitch: name === "create_project",
+    queueTimeoutMs: QUEUE_WAIT_TIMEOUT_MS,
+    label: name,
+  }, async workspace => {
     if (workspace && name === "animation_timeline" && parameters.action === "play") {
       throw new Error("Continuous playback cannot outlive an isolated tool call. Set a timeline time and capture a frame, or preview playback manually in Blockbench.");
     }
@@ -457,9 +473,10 @@ export function registerResourcesOnServer(server: unknown) {
     typedServer.registerResource(
       name,
       new ResourceTemplate(resourceDef.uriTemplate, {
-        list: resourceDef.listCallback ? (extra) => runInWorkspace(
-          extra, requestWorkspace(extra), false, async () => resourceDef.listCallback!()
-        ) : undefined,
+        list: resourceDef.listCallback ? (extra) => runInWorkspace(extra, {
+          workspaceId: requestWorkspace(extra), requireProject: false,
+          queueTimeoutMs: QUEUE_WAIT_TIMEOUT_MS, label: `list ${name} resources`,
+        }, async () => resourceDef.listCallback!()) : undefined,
       }),
       resourceDef.metadata,
       async (uri: URL, variables: Record<string, string | string[]>, extra: RequestContext) => {
@@ -472,8 +489,10 @@ export function registerResourcesOnServer(server: unknown) {
           })
         ) as Record<string, string>;
 
-        return runInWorkspace(extra, requestWorkspace(extra), false,
-          async () => resourceDef.readCallback(uri, normalizedVariables));
+        return runInWorkspace(extra, {
+          workspaceId: requestWorkspace(extra), requireProject: false,
+          queueTimeoutMs: QUEUE_WAIT_TIMEOUT_MS, label: `read ${name} resource`,
+        }, async () => resourceDef.readCallback(uri, normalizedVariables));
       }
     );
   }

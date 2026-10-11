@@ -116,7 +116,7 @@ test("shared connection workspace_id routes every call and full schema refinemen
   ]);
   expect(projects.find(p => p.name === "agent-a")?.elements).toEqual(["a"]);
   expect(projects.find(p => p.name === "agent-b")?.elements).toEqual(["b"]);
-  await expect(call("test_model_edit", "factory-shared", { label: "missing-id" })).rejects.toThrow("no project");
+  await expect(call("test_model_edit", "factory-shared", { label: "missing-id" })).rejects.toThrow("Pass your own workspace_id");
   await expect(call("test_model_edit", "factory-shared", { label: "invalid", workspace_id: "agent-a" })).rejects.toThrow("Invalid edit");
 });
 

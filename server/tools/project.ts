@@ -3,7 +3,24 @@
 import { z } from "zod";
 import { createTool, type ToolSpec } from "@/lib/factories";
 import { STATUS_STABLE } from "@/lib/constants";
-import { workspaceManager } from "@/lib/workspaces";
+import { workspaceManager, type WorkspaceContext } from "@/lib/workspaces";
+
+const rebindParameter = z.boolean().optional().default(false)
+  .describe("Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id.");
+
+/** Silent rebinding would redirect another agent's later edits into this project. */
+function assertRebindAllowed(workspace: WorkspaceContext | undefined, rebind: boolean, nextProjectId?: string): void {
+  if (!workspace || rebind) return;
+  const currentId = workspace.getProjectId();
+  if (!currentId || currentId === nextProjectId) return;
+  const current = ModelProject.all.find((project) => project.uuid === currentId);
+  if (!current) return;
+  throw new Error(
+    `Workspace "${workspace.workspaceId}" is already bound to project "${current.name}" (${currentId}). ` +
+    "If you are a different agent sharing this MCP connection, choose your own unique workspace_id and pass it on every call. " +
+    "To switch this workspace to another project on purpose, call again with rebind: true."
+  );
+}
 
 export const createProjectParameters = z.object({
   name: z.string(),
@@ -11,11 +28,13 @@ export const createProjectParameters = z.object({
     .string()
     .default("bedrock_block")
     .describe("Project format ID from Blockbench's Formats registry."),
+  rebind: rebindParameter,
 });
 
 export const getProjectInfoParameters = z.object({});
 export const selectProjectParameters = z.object({
   project_id: z.string().min(1).describe("UUID of an open project returned by list_projects. Must be unclaimed or owned by this workspace."),
+  rebind: rebindParameter,
 });
 export const listProjectsParameters = z.object({});
 
@@ -61,8 +80,9 @@ export const projectToolDocs: ToolSpec[] = [
 export function registerProjectTools() {
   createTool(projectToolDocs[0].name, {
     ...projectToolDocs[0],
-    async execute({ name, format }, context) {
+    async execute({ name, format, rebind }, context) {
       if (!Formats[format]) throw new Error(`Unknown project format: ${format}`);
+      assertRebindAllowed(context?.workspace, rebind);
       const created = newProject(Formats[format]);
 
       if (!created) {
@@ -127,8 +147,11 @@ export function registerProjectTools() {
 
   createTool(projectToolDocs[2].name, {
     ...projectToolDocs[2],
-    async execute({ project_id }, context) {
+    async execute({ project_id, rebind }, context) {
       if (!context?.workspace) throw new Error("select_project requires an MCP workspace.");
+      // Report ownership conflicts first: they mean "pick another project", not "rebind".
+      workspaceManager.assertProjectAccess(project_id);
+      assertRebindAllowed(context.workspace, rebind, project_id);
       context.workspace.bindProject(project_id);
       return JSON.stringify({ project_id, workspace_id: context.workspace.workspaceId });
     },
