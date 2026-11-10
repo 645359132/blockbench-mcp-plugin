@@ -13,8 +13,10 @@ interface TestProject {
   uuid: string
   name: string
   cubes: TestCube[]
+  saved: boolean
   select(): boolean
   unselect(): void
+  close(force: boolean): Promise<boolean>
 }
 let active: TestProject | undefined
 const projects: TestProject[] = []
@@ -43,9 +45,15 @@ beforeAll(async () => {
   install('Formats', { value: { bedrock_block: { id: 'bedrock_block' } } })
   install('newProject', { value: () => {
     const project: TestProject = {
-      uuid: crypto.randomUUID(), name: '', cubes: [],
+      uuid: crypto.randomUUID(), name: '', cubes: [], saved: true,
       select () { active = this; return true },
-      unselect () { active = undefined }
+      unselect () { active = undefined },
+      async close (force) {
+        if (!force && !this.saved) return false
+        projects.splice(projects.indexOf(this), 1)
+        if (active === this) active = undefined
+        return true
+      }
     }
     projects.push(project)
     active = project
@@ -64,6 +72,7 @@ beforeAll(async () => {
       await Bun.sleep(delay)
       if (active !== project) throw new Error('The active project changed during an asynchronous edit')
       project.cubes.push({ name, from, to })
+      project.saved = false
       return JSON.stringify({ uuid: project.uuid, cubes: project.cubes })
     }
   })
@@ -177,4 +186,35 @@ test('a second create_project in a bound workspace is refused unless rebinding i
   const edit = await client.callTool({ name: 'wire_add_cube', arguments: { name: 'cube', from: [0, 0, 0], to: [1, 1, 1] } })
   expect(JSON.parse((edit.content as Array<{ text: string }>)[0].text).uuid)
     .toBe(projects.find(project => project.name === 'rebind-second')?.uuid)
+})
+
+test('close_project frees only tabs the workspace owns and unbinds it', async () => {
+  const [owner, other] = await Promise.all([connect('closer'), connect('bystander')])
+  await owner.client.callTool({ name: 'create_project', arguments: { name: 'close-me' } })
+  await owner.client.callTool({ name: 'wire_add_cube', arguments: { name: 'cube', from: [0, 0, 0], to: [1, 1, 1] } })
+  const project = projects.find(candidate => candidate.name === 'close-me')!
+
+  const listed = await owner.client.callTool({ name: 'list_projects', arguments: {} })
+  const entry = JSON.parse((listed.content as Array<{ text: string }>)[0].text)
+    .find((item: { uuid: string }) => item.uuid === project.uuid)
+  expect(entry).toEqual({ uuid: project.uuid, name: 'close-me', format: undefined, saved: false, owned: true })
+
+  const stranger = await other.client.callTool({ name: 'close_project', arguments: { project_id: project.uuid } })
+  expect(stranger.isError).toBe(true)
+  expect(JSON.stringify(stranger.content)).toContain('Only projects created or selected by this workspace')
+
+  const unsaved = await owner.client.callTool({ name: 'close_project', arguments: {} })
+  expect(unsaved.isError).toBe(true)
+  expect(JSON.stringify(unsaved.content)).toContain('unsaved changes')
+  expect(projects).toContain(project)
+
+  const closed = await owner.client.callTool({ name: 'close_project', arguments: { discard_unsaved: true } })
+  expect(closed.isError).not.toBe(true)
+  expect(projects).not.toContain(project)
+
+  const unbound = await owner.client.callTool({ name: 'wire_add_cube', arguments: { name: 'late', from: [0, 0, 0], to: [1, 1, 1] } })
+  expect(JSON.stringify(unbound.content)).toContain('no project')
+  // The workspace is free again: no rebind needed.
+  const next = await owner.client.callTool({ name: 'create_project', arguments: { name: 'after-close' } })
+  expect(next.isError).not.toBe(true)
 })

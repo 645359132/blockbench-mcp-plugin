@@ -18,7 +18,7 @@
 
       <div class="nav-group">
         <p class="nav-heading">Overview</p>
-        <a href="#tools" class="nav-link">Tools <span class="count">(108)</span></a>
+        <a href="#tools" class="nav-link">Tools <span class="count">(116)</span></a>
         <a href="#prompts" class="nav-link">Prompts <span class="count">(6)</span></a>
         <a href="#resources" class="nav-link">Resources <span class="count">(12)</span></a>
       </div>
@@ -28,15 +28,16 @@
         <a href="#cat-cubes" class="nav-link">Cubes <span class="count">(2)</span></a>
         <a href="#cat-camera-screenshots" class="nav-link">Camera &amp; Screenshots <span class="count">(3)</span></a>
         <a href="#cat-animation" class="nav-link">Animation <span class="count">(7)</span></a>
-        <a href="#cat-armature" class="nav-link">Armature <span class="count">(16)</span></a>
+        <a href="#cat-armature" class="nav-link">Armature <span class="count">(17)</span></a>
         <a href="#cat-elements" class="nav-link">Elements <span class="count">(9)</span></a>
-        <a href="#cat-export" class="nav-link">Export <span class="count">(2)</span></a>
+        <a href="#cat-export" class="nav-link">Export <span class="count">(3)</span></a>
         <a href="#cat-history" class="nav-link">History <span class="count">(4)</span></a>
         <a href="#cat-import-export" class="nav-link">Import/Export <span class="count">(1)</span></a>
         <a href="#cat-material-instances" class="nav-link">Material Instances <span class="count">(5)</span></a>
-        <a href="#cat-mesh-editing" class="nav-link">Mesh Editing <span class="count">(11)</span></a>
+        <a href="#cat-mesh-editing" class="nav-link">Mesh Editing <span class="count">(12)</span></a>
+        <a href="#cat-netease-integration" class="nav-link">NetEase Integration <span class="count">(4)</span></a>
         <a href="#cat-paint-tools" class="nav-link">Paint Tools <span class="count">(12)</span></a>
-        <a href="#cat-project" class="nav-link">Project <span class="count">(4)</span></a>
+        <a href="#cat-project" class="nav-link">Project <span class="count">(5)</span></a>
         <a href="#cat-textures" class="nav-link">Textures <span class="count">(13)</span></a>
         <a href="#cat-ui-interaction" class="nav-link">UI Interaction <span class="count">(4)</span></a>
         <a href="#cat-uv-mapping" class="nav-link">UV Mapping <span class="count">(3)</span></a>
@@ -49,7 +50,7 @@
         <h1>Blockbench MCP Plugin</h1>
         <p class="subtitle">API Reference — v1.6.1</p>
         <nav class="stats">
-          <a href="#tools"><strong>108</strong> tools (41 stable, 67 experimental)</a>
+          <a href="#tools"><strong>116</strong> tools (43 stable, 73 experimental)</a>
           <a href="#prompts"><strong>6</strong> prompts</a>
           <a href="#resources"><strong>12</strong> resources</a>
         </nav>
@@ -570,6 +571,16 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
         </tr>
       </thead>
       <tbody><tr>
+      <td class="col-name">animation_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Animation UUID or name. If not provided, uses current animation.</td>
+    </tr><tr>
+      <td class="col-name">capture_frame</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Return a native viewport image after seeking, before the workspace restores editor state.</td>
+    </tr><tr>
       <td class="col-name">action</td>
       <td class="col-type">&quot;play&quot; | &quot;pause&quot; | &quot;stop&quot; | &quot;set_time&quot; | &quot;set_length&quot; | &quot;set_fps&quot; | &quot;loop&quot; | &quot;select_range&quot;</td>
       <td><span class="param-required">required</span></td>
@@ -1443,6 +1454,50 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
     </table>
       </div>
     </div>
+<div id="tool-bind_mesh_to_armature" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">bind_mesh_to_armature</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Bind Mesh to Armature</p>
+      <p class="card-desc">Attaches a mesh directly to an armature so its bones can deform the mesh. Existing vertex weights are preserved.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">ID or name of the mesh.</td>
+    </tr><tr>
+      <td class="col-name">armature_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">UUID or name of the target armature.</td>
+    </tr><tr>
+      <td class="col-name">force</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Allow moving a mesh that is already attached to a different armature. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
         </section>
 <section id="cat-elements" class="category-section">
           <h3 class="category-title">Elements</h3>
@@ -1943,6 +1998,45 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
     </table>
       </div>
     </div>
+<div id="tool-bedrock_export_animations" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">bedrock_export_animations</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-openworld">open-world</span>
+        </div>
+      </div>
+      <p class="card-title">Export Bedrock Animations</p>
+      <p class="card-desc">Compiles the named animations of the bound project with Blockbench's native Bedrock animation codec and writes them to one `.json` file. Keyframe interpolation and coordinate conversion are Blockbench's own; nothing is serialized by hand.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">animations</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Names (e.g. 'animation.phoenix.rebirth') or UUIDs of the bound project's animations to compile into one file. <span class="param-meta">[minItems: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute filesystem path of the `.json` animation file to write. Missing parent directories are created. Requires user permission (Blockbench v5.0+ prompts for 'fs' access).</td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
         </section>
 <section id="cat-history" class="category-section">
           <h3 class="category-title">History</h3>
@@ -2324,7 +2418,7 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
         </div>
       </div>
       <p class="card-title">Place Mesh</p>
-      <p class="card-desc">Places a mesh at the specified position. Texture and group are optional.</p>
+      <p class="card-desc">Creates one or more polygon meshes from indexed vertices and triangle/quad faces. Supports transforms, UVs, per-face textures, and an optional parent group.</p>
       <div class="overflow-x">
         <table class="param-table">
       <thead>
@@ -2785,6 +2879,294 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
       <td class="col-type">object[]</td>
       <td><span class="param-required">required</span></td>
       <td class="col-desc">Points defining the cut path. <span class="param-meta">[minItems: 2]</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-get_mesh" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">get_mesh</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Get Mesh</p>
+      <p class="card-desc">Returns complete mesh topology, transforms, per-face UVs and textures, plus optional armature weights. Vertex indices match the order returned in vertices.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">ID or name of the mesh. If not provided, uses selected mesh.</td>
+    </tr><tr>
+      <td class="col-name">include_weights</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Include non-zero armature weights for each vertex. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+        </section>
+<section id="cat-netease-integration" class="category-section">
+          <h3 class="category-title">NetEase Integration</h3>
+          <div id="tool-netease_get_format_info" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">netease_get_format_info</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">NetEase Format Readiness</p>
+      <p class="card-desc">Reports whether the current Blockbench project has the mesh and armature features needed for NetEase skeletal-model authoring. This does not claim runtime-format compatibility.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-netease_validate_model" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">netease_validate_model</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-readonly">read-only</span>
+        </div>
+      </div>
+      <p class="card-title">Validate NetEase Source Model</p>
+      <p class="card-desc">Validates the current polygon mesh, armature, textures and vertex weights against a conservative NetEase skeletal-model authoring profile. It validates source readiness, not converted runtime JSON.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">strict_rigid_skinning</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Require every vertex to be assigned to exactly one bone. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">recommended_max_vertices</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>300</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">hard_max_vertices</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>1000</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">enforce_vertex_hard_limit</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Treat hard_max_vertices as an error. Disabled by default because observed NetEase effect models can be much larger. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">recommended_max_bones</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>20</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">hard_max_bones</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>50</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">max_textures</td>
+      <td class="col-type">integer</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>1</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-netease_assign_rigid_weights" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">netease_assign_rigid_weights</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Assign NetEase Rigid Weights</p>
+      <p class="card-desc">Assigns selected mesh vertices to one armature bone with weight 1, optionally clearing all other bone influences. This matches the conservative rigid-skinning profile.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">mesh_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">ID or name of the mesh.</td>
+    </tr><tr>
+      <td class="col-name">bone_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">UUID or name of a bone in the mesh's armature.</td>
+    </tr><tr>
+      <td class="col-name">vertices</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Vertex keys to assign. If omitted, assigns every vertex in the mesh. <span class="param-meta">[minItems: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">clear_other_bones</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Remove the selected vertices from every other bone before assigning weight 1. <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-netease_export_resource_pack" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">netease_export_resource_pack</h3>
+        <div class="card-badges">
+          <span class="badge badge-experimental">experimental</span>
+          <span class="badge badge-destructive">destructive</span><span class="badge badge-openworld">open-world</span>
+        </div>
+      </div>
+      <p class="card-title">Export NetEase Resource Pack</p>
+      <p class="card-desc">Exports the selected Blockbench armature as NetEase China Edition mesh, skeleton, animation, registry, interchange, and texture files. Animations require numeric linear keyframes with one data point and rotation steps of at most 180 degrees per axis. Existing netease_models.json entries are preserved.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">model_name</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Model identifier used in filenames and netease_models.json.</td>
+    </tr><tr>
+      <td class="col-name">output_path</td>
+      <td class="col-type">string</td>
+      <td><span class="param-required">required</span></td>
+      <td class="col-desc">Absolute path to the resource-pack root. Files are written below models/ and textures/models/. <span class="param-meta">[minLength: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">armature_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Armature UUID or name. Required when multiple exported armatures exist.</td>
+    </tr><tr>
+      <td class="col-name">centimeters_per_unit</td>
+      <td class="col-type">number</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Scale applied to Blockbench coordinates. Blockbench axes already match the NetEase Y-up model space. <span class="param-meta">(default: <code>1</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">include_animations</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">animation_ids</td>
+      <td class="col-type">string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Animation UUIDs, full names, or short names to export. Omit to export all armature animations.</td>
+    </tr><tr>
+      <td class="col-name">material</td>
+      <td class="col-type">string | string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">NetEase render material or ordered multi-pass material list. <span class="param-meta">(default: <code>&quot;entity_for_skeleton&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">material_cpu</td>
+      <td class="col-type">string | string[]</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"></td>
+    </tr><tr>
+      <td class="col-name">texture</td>
+      <td class="col-type">object</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Optional texture overrides below textures/models, without file extensions.</td>
+    </tr><tr>
+      <td class="col-name">arm_model</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"></td>
+    </tr><tr>
+      <td class="col-name">use_split_meshes</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">split_bones_group</td>
+      <td class="col-type">Record&lt;string, unknown&gt;</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"></td>
+    </tr><tr>
+      <td class="col-name">dy_load</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">copy_textures</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>true</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">compact</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc"> <span class="param-meta">(default: <code>false</code>)</span></td>
     </tr><tr>
       <td class="col-name">workspace_id</td>
       <td class="col-type">string</td>
@@ -3532,7 +3914,7 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
         </div>
       </div>
       <p class="card-title">Create Project</p>
-      <p class="card-desc">Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call.</p>
+      <p class="card-desc">Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call. Every project is a Blockbench tab that stays open until closed: call close_project when you are finished with it.</p>
       <div class="overflow-x">
         <table class="param-table">
       <thead>
@@ -3553,6 +3935,11 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
       <td class="col-desc">Project format ID from Blockbench's Formats registry. <span class="param-meta">(default: <code>&quot;bedrock_block&quot;</code>)</span></td>
+    </tr><tr>
+      <td class="col-name">rebind</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id. <span class="param-meta">(default: <code>false</code>)</span></td>
     </tr><tr>
       <td class="col-name">workspace_id</td>
       <td class="col-type">string</td>
@@ -3617,6 +4004,11 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
       <td><span class="param-required">required</span></td>
       <td class="col-desc">UUID of an open project returned by list_projects. Must be unclaimed or owned by this workspace. <span class="param-meta">[minLength: 1]</span></td>
     </tr><tr>
+      <td class="col-name">rebind</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
       <td class="col-name">workspace_id</td>
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
@@ -3646,6 +4038,45 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
         </tr>
       </thead>
       <tbody><tr>
+      <td class="col-name">workspace_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project. <span class="param-meta">[minLength: 1, maxLength: 128]</span></td>
+    </tr></tbody>
+    </table>
+      </div>
+    </div>
+<div id="tool-close_project" class="card tool-card">
+      <div class="card-header">
+        <h3 class="card-name">close_project</h3>
+        <div class="card-badges">
+          <span class="badge badge-stable">stable</span>
+          <span class="badge badge-destructive">destructive</span>
+        </div>
+      </div>
+      <p class="card-title">Close Project</p>
+      <p class="card-desc">Closes a project tab this workspace created or selected, freeing its memory, and unbinds it from the workspace. Projects opened by the user or owned by other workspaces cannot be closed. Unsaved projects are refused unless discard_unsaved is true, so export the model first.</p>
+      <div class="overflow-x">
+        <table class="param-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Required</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody><tr>
+      <td class="col-name">project_id</td>
+      <td class="col-type">string</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">UUID of a project owned by this workspace. Defaults to the workspace's bound project. <span class="param-meta">[minLength: 1]</span></td>
+    </tr><tr>
+      <td class="col-name">discard_unsaved</td>
+      <td class="col-type">boolean</td>
+      <td><span class="param-optional">optional</span></td>
+      <td class="col-desc">Close even if the project has unsaved changes. Export the model first (export_model); closing discards the in-editor copy. <span class="param-meta">(default: <code>false</code>)</span></td>
+    </tr><tr>
       <td class="col-name">workspace_id</td>
       <td class="col-type">string</td>
       <td><span class="param-optional">optional</span></td>
@@ -5196,7 +5627,7 @@ url = &quot;http://127.0.0.1:3000/bb-mcp&quot;
       </section>
 
       <footer class="page-footer">
-        Generated 2026-09-10T07:00:38.998Z from Zod schemas
+        Generated 2026-11-10T16:51:09.343Z from Zod schemas
       </footer>
     </main>
   </div>

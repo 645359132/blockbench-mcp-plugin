@@ -37,11 +37,17 @@ export const selectProjectParameters = z.object({
   rebind: rebindParameter,
 });
 export const listProjectsParameters = z.object({});
+export const closeProjectParameters = z.object({
+  project_id: z.string().min(1).optional()
+    .describe("UUID of a project owned by this workspace. Defaults to the workspace's bound project."),
+  discard_unsaved: z.boolean().optional().default(false)
+    .describe("Close even if the project has unsaved changes. Export the model first (export_model); closing discards the in-editor copy."),
+});
 
 export const projectToolDocs: ToolSpec[] = [
   {
     name: "create_project",
-    description: "Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call.",
+    description: "Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call. Every project is a Blockbench tab that stays open until closed: call close_project when you are finished with it.",
     annotations: {
       title: "Create Project",
       destructiveHint: true,
@@ -73,6 +79,13 @@ export const projectToolDocs: ToolSpec[] = [
     description: "Lists open projects available to this workspace, including its owned projects and unclaimed projects. Use select_project with a returned UUID to resume work.",
     annotations: { title: "List Projects", readOnlyHint: true },
     parameters: listProjectsParameters,
+    status: STATUS_STABLE,
+  },
+  {
+    name: "close_project",
+    description: "Closes a project tab this workspace created or selected, freeing its memory, and unbinds it from the workspace. Projects opened by the user or owned by other workspaces cannot be closed. Unsaved projects are refused unless discard_unsaved is true, so export the model first.",
+    annotations: { title: "Close Project", destructiveHint: true },
+    parameters: closeProjectParameters,
     status: STATUS_STABLE,
   },
 ];
@@ -159,10 +172,45 @@ export function registerProjectTools() {
 
   createTool(projectToolDocs[3].name, {
     ...projectToolDocs[3],
-    async execute() {
+    async execute(_args, context) {
+      const workspace = context?.workspace;
       return JSON.stringify(workspaceManager.getProjects().map(project => ({
-        uuid: project.uuid, name: project.name, format: project.format?.id,
+        uuid: project.uuid, name: project.name, format: project.format?.id, saved: project.saved,
+        owned: workspace?.ownsProject(project.uuid) ?? false,
       })));
     },
   }, projectToolDocs[3].status);
+
+  createTool(projectToolDocs[4].name, {
+    ...projectToolDocs[4],
+    async execute({ project_id, discard_unsaved }, context) {
+      const workspace = context?.workspace;
+      if (!workspace) throw new Error("close_project requires an MCP workspace.");
+      const uuid = project_id ?? workspace.getProjectId();
+      if (!uuid) {
+        throw new Error("This workspace is not bound to a project. Pass the project_id of a project this workspace owns (see list_projects).");
+      }
+      if (!workspace.ownsProject(uuid)) {
+        throw new Error("Only projects created or selected by this workspace can be closed. Tabs opened by the user or owned by other workspaces are left open.");
+      }
+      const project = ModelProject.all.find((candidate) => candidate.uuid === uuid);
+      if (!project) {
+        workspace.releaseProject(uuid);
+        return JSON.stringify({ closed: uuid, already_closed: true, workspace_id: workspace.workspaceId });
+      }
+      if (!project.saved && !discard_unsaved) {
+        throw new Error(
+          `Project "${project.name}" has unsaved changes. Export the model first (export_model), ` +
+          "then call close_project again with discard_unsaved: true."
+        );
+      }
+      // Forced: the unsaved check above replaces Blockbench's blocking save dialog.
+      const closed = await project.close(true);
+      if (closed === false || ModelProject.all.includes(project)) {
+        throw new Error(`Blockbench did not close project "${project.name}". Finish any open dialog in Blockbench and retry.`);
+      }
+      workspace.releaseProject(uuid);
+      return JSON.stringify({ closed: uuid, name: project.name, workspace_id: workspace.workspaceId });
+    },
+  }, projectToolDocs[4].status);
 }

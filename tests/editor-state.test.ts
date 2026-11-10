@@ -70,6 +70,13 @@ test("restores detached paint and locked-camera state without replacing native v
     expect(painter.mirror_painting_options.texture_center).toEqual([128, 16]);
     expect(sideTarget.toArray()).toEqual([90, 91, 92]);
     expect(renderedTime).toBe(1.25);
+    // On a tab the user switched to, only project-independent state returns.
+    await restoreEditorState(first, { projectChanged: true });
+    expect(brush.value).toBe(7);
+    expect(painter.mirror_painting_options.texture_center).toEqual([16, 16]);
+    expect(camera.position.toArray()).toEqual([99, 99, 99]);
+    expect(timeline.time).toBe(1.25);
+    expect(timeline.selected).toEqual([]);
   } finally {
     for (const [name, descriptor] of originalDescriptors) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);

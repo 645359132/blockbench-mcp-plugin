@@ -46,6 +46,16 @@ export function settingsSetup() {
       category,
       icon: "code",
     }),
+    new Setting("mcp_idle_restore_delay", {
+      name: tl("mcp.settings.idle_restore_name"),
+      description: tl("mcp.settings.idle_restore_desc"),
+      type: "number",
+      value: 3000,
+      min: 0,
+      max: 60000,
+      category,
+      icon: "tab",
+    }),
     new Setting("mcp_session_timeout", {
       name: tl("mcp.settings.session_timeout_name"),
       description: tl("mcp.settings.session_timeout_desc"),

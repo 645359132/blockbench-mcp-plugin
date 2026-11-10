@@ -291,6 +291,24 @@ export const cubeSchema = z.object({
 });
 
 /** Mesh element schema */
+export const meshFaceSchema = z.object({
+  vertices: z
+    .array(z.number().int().nonnegative())
+    .min(3)
+    .max(4)
+    .describe("Zero-based vertex indices. Use counter-clockwise order when viewing the front of the face."),
+  uv: z
+    .array(vector2Schema)
+    .min(3)
+    .max(4)
+    .optional()
+    .describe("UV coordinate for each entry in vertices, in the same order."),
+  texture: z
+    .string()
+    .optional()
+    .describe("Optional texture ID or name overriding the mesh-level texture for this face."),
+});
+
 export const meshSchema = z.object({
   name: z.string(),
   position: vector3Schema
@@ -310,6 +328,16 @@ export const meshSchema = z.object({
     .optional()
     .default([])
     .describe("Vertices of the mesh."),
+  faces: z
+    .array(meshFaceSchema)
+    .optional()
+    .default([])
+    .describe("Triangle or quad faces referencing vertices by zero-based index."),
+  shading: z
+    .enum(["flat", "smooth"])
+    .optional()
+    .default("flat")
+    .describe("Mesh shading mode."),
 });
 
 /** Keyframe data for animation tools */

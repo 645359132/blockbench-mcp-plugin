@@ -2,7 +2,7 @@
 /// <reference types="blockbench-types" />
 import { z } from "zod";
 import { createTool, type ToolSpec } from "@/lib/factories";
-import { findGroupOrThrow } from "@/lib/util";
+import { findGroupOrThrow, captureScreenshot } from "@/lib/util";
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
 import {
   vector3Schema,
@@ -132,6 +132,8 @@ export const boneRiggingParameters = z.object({
 });
 
 export const animationTimelineParameters = z.object({
+  animation_id: animationIdOptionalSchema,
+  capture_frame: z.boolean().optional().describe("Return a native viewport image after seeking, before the workspace restores editor state."),
   action: z
     .enum([
       "play",
@@ -358,14 +360,60 @@ createTool(
         ...(particle_effects && { particle_effects }),
       };
 
-      Animator.loadFile({
+      const importedAnimations = Animator.loadFile({
         content: JSON.stringify({
           format_version: "1.8.0",
           animations: {
             [`animation.${name}`]: animationData,
           },
         }),
-      });
+      }) as unknown as _Animation[];
+
+      // Importing a clip does not select it. Keep timeline operations scoped
+      // to the newly created clip in this workspace's bound project.
+      const createdAnimation = importedAnimations[0];
+      // The native loader resolves bone names through Group.all. Armature
+      // bones import as orphan animators; re-home those tracks while retaining
+      // tracks that are already bound to actual groups or bones.
+      if (createdAnimation) {
+        // createKeyframe() ends in Animation.selected.setLength(), so the clip
+        // must be the selected one before any keyframe is created.
+        createdAnimation.select();
+        const rigBones: any[] = ((globalThis as any).Armature?.all ?? []).flatMap(
+          (armature: any) => armature.getAllBones?.() ?? []
+        );
+        const boundAnimatorIds = new Set([
+          ...Group.all.map((group: Group) => group.uuid),
+          ...rigBones.map((bone) => bone.uuid),
+        ]);
+        for (const bone of rigBones) {
+          const sourceEntry = Object.entries(createdAnimation.animators).find(
+            ([uuid, animator]) =>
+              !boundAnimatorIds.has(uuid) &&
+              animator.name.toLowerCase() === String(bone.name).toLowerCase()
+          );
+          if (!sourceEntry) continue;
+          const [sourceId, source] = sourceEntry;
+          let target = createdAnimation.animators[bone.uuid] as BoneAnimator | undefined;
+          if (!target) {
+            const BoneAnimatorClass = (bone.constructor as any).animator ?? BoneAnimator;
+            target = new BoneAnimatorClass(bone.uuid, createdAnimation, bone.name) as BoneAnimator;
+            createdAnimation.animators[bone.uuid] = target;
+          }
+          for (const channel of ["position", "rotation", "scale"] as const) {
+            // Move the instances rather than rebuilding them: this build's
+            // Keyframe ignores a `values` field and would fall back to defaults.
+            const moved = ((source as any)[channel] ?? []).splice(0) as any[];
+            for (const keyframe of moved) {
+              keyframe.animator = target;
+              (target as any)[channel].push(keyframe);
+            }
+            (target as any)[channel].sort((a: any, b: any) => a.time - b.time);
+          }
+          delete createdAnimation.animators[sourceId];
+        }
+      }
+      createdAnimation?.select();
 
       return `Created animation "${name}" with keyframes for ${
         Object.keys(bones).length
@@ -401,7 +449,8 @@ createTool(
       // Get or create animator
       let animator = animation.animators[group.uuid];
       if (!animator) {
-        animator = new BoneAnimator(group.uuid, animation, bone_name);
+        const AnimatorClass = (group.constructor as any).animator ?? BoneAnimator;
+        animator = new AnimatorClass(group.uuid, animation, bone_name);
         animation.animators[group.uuid] = animator;
       }
 
@@ -771,7 +820,14 @@ createTool(
   animationToolDocs[4].name,
   {
     ...animationToolDocs[4],
-    async execute({ action, time, length, fps, loop_mode, range }) {
+    async execute({ action, time, length, fps, loop_mode, range, animation_id, capture_frame }) {
+      if (animation_id) {
+        const animation = (Animation as unknown as typeof _Animation).all.find(
+          (entry) => entry.uuid === animation_id || entry.name === animation_id
+        );
+        if (!animation) throw new Error(`Animation not found: ${animation_id}`);
+        animation.select();
+      }
       if (!Animation.selected) {
         throw new Error("No animation selected.");
       }
@@ -846,6 +902,7 @@ createTool(
 
       Animator.preview();
 
+      if (capture_frame) return captureScreenshot();
       return result;
     },
   },
@@ -1111,7 +1168,8 @@ createTool(
 
           let animator = tgtAnimation.animators[tgtBone.uuid];
           if (!animator) {
-            animator = new BoneAnimator(
+            const TargetAnimatorClass = (tgtBone.constructor as any).animator ?? BoneAnimator;
+            animator = new TargetAnimatorClass(
               tgtBone.uuid,
               tgtAnimation,
               target.bone

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { WorkspaceManager, type WorkspaceRequest } from "../lib/workspaces";
+import { WorkspaceManager, type RestoreStateOptions, type SchedulingOptions, type WorkspaceRequest } from "../lib/workspaces";
 
 interface TestProject {
   uuid: string;
@@ -12,13 +12,14 @@ function deferred() {
   return { promise, resolve };
 }
 
-function fixture() {
+function fixture(scheduling?: SchedulingOptions) {
   const projects: TestProject[] = ["user", "a", "b", "c"].map((uuid) => ({ uuid, elements: [] }));
   let selected: TestProject | undefined = projects[0];
   let blockedProject: string | undefined;
   let editor = { camera: { x: 7 }, color: "user-color", time: 0 };
   const locked = new Set<string>();
   const selections: string[] = [];
+  const restores: Array<RestoreStateOptions | undefined> = [];
   const manager = new WorkspaceManager({
     getProjects: () => projects,
     getActiveProject: () => selected,
@@ -36,15 +37,20 @@ function fixture() {
       return () => { locked.delete(project.uuid); };
     },
     captureState: () => structuredClone(editor),
-    restoreState: (state) => { editor = structuredClone(state) as typeof editor; },
-  });
+    restoreState: (state, options) => {
+      restores.push(options);
+      // Mirrors restoreEditorState(): the camera belongs to the tab the user moved to.
+      const saved = structuredClone(state) as typeof editor;
+      editor = options?.projectChanged ? { ...saved, camera: editor.camera } : saved;
+    },
+  }, scheduling);
   manager.openSession("one");
   const bind = (sessionId: string, projectId: string, workspaceId?: string) => manager.run(
     { sessionId, workspaceId, requireProject: false },
     (context) => context.bindProject(projectId)
   );
   return {
-    manager, projects, bind, locked, selections,
+    manager, projects, bind, locked, selections, restores,
     select: (uuid: string) => {
       if (selected && locked.has(selected.uuid)) return false;
       selected = projects.find((candidate) => candidate.uuid === uuid);
@@ -341,7 +347,8 @@ describe("shared editor scheduling", () => {
   });
 
   test("queued work switches directly between projects and restores the user's tab once", async () => {
-    const { manager, bind, selections, current, editor } = fixture();
+    // One-operation slices serve workspaces strictly in arrival order.
+    const { manager, bind, selections, current, editor } = fixture({ sliceOperations: 1 });
     manager.openSession("two");
     await bind("one", "a");
     await bind("two", "b");
@@ -398,5 +405,222 @@ describe("shared editor scheduling", () => {
     expect(await manager.run({ ...strict, workspaceId: "default" }, (context) => context.getProjectId())).toBe("a");
     // Read-only resource requests keep the default fallback.
     expect(await manager.run({ sessionId: "one" }, (context) => context.workspaceId)).toBe("default");
+  });
+});
+
+describe("workspace affinity", () => {
+  /** Holds the editor with one running call for `sessionId` until `release()` is called. */
+  async function occupy(manager: WorkspaceManager<TestProject>, sessionId: string, events: string[]) {
+    const entered = deferred();
+    const resume = deferred();
+    const running = manager.run({ sessionId }, async () => {
+      entered.resolve();
+      await resume.promise;
+      events.push(sessionId);
+    });
+    await entered.promise;
+    return { running, release: resume.resolve };
+  }
+
+  test("interleaved calls are grouped by workspace instead of switching projects every call", async () => {
+    const { manager, bind, selections, current } = fixture();
+    manager.openSession("two");
+    await bind("one", "a");
+    await bind("two", "b");
+    selections.length = 0;
+    const events: string[] = [];
+    const holder = await occupy(manager, "one", events);
+    const queued = ["two", "one", "two", "one"].map((sessionId, index) =>
+      manager.run({ sessionId }, () => { events.push(`${sessionId}:${index}`); })
+    );
+    holder.release();
+    await Promise.all([holder.running, ...queued]);
+    // Each workspace keeps its own order; only the order between workspaces changes.
+    expect(events).toEqual(["one", "one:1", "one:3", "two:0", "two:2"]);
+    expect(selections).toEqual(["a", "b", "user"]);
+    expect(current()?.uuid).toBe("user");
+  });
+
+  test("a slice is bounded so a busy workspace cannot starve the others", async () => {
+    const { manager, bind } = fixture({ sliceOperations: 2 });
+    manager.openSession("two");
+    await bind("one", "a");
+    await bind("two", "b");
+    const events: string[] = [];
+    const holder = await occupy(manager, "one", events);
+    const queued = ["two", "one", "one", "one"].map((sessionId, index) =>
+      manager.run({ sessionId }, () => { events.push(`${sessionId}:${index}`); })
+    );
+    holder.release();
+    await Promise.all([holder.running, ...queued]);
+    expect(events).toEqual(["one", "one:1", "two:0", "one:2", "one:3"]);
+  });
+
+  test("a slice also ends once its time is used up", async () => {
+    const { manager, bind } = fixture({ sliceMs: 0 });
+    manager.openSession("two");
+    await bind("one", "a");
+    await bind("two", "b");
+    const events: string[] = [];
+    const holder = await occupy(manager, "one", events);
+    const queued = ["two", "one"].map((sessionId) => manager.run({ sessionId }, () => { events.push(`${sessionId}:queued`); }));
+    holder.release();
+    await Promise.all([holder.running, ...queued]);
+    expect(events).toEqual(["one", "two:queued", "one:queued"]);
+  });
+
+  test("binding-only operations keep their order without activating any project", async () => {
+    const { manager, selections, current, projects } = fixture();
+    const order: string[] = [];
+    const bound = manager.run({ sessionId: "one", requireProject: false, usesEditor: false }, (context) => {
+      order.push("bind");
+      expect(current()?.uuid).toBe("user");
+      context.bindProject("a");
+    });
+    const edited = manager.run({ sessionId: "one" }, () => {
+      order.push("edit");
+      current()!.elements.push("cube");
+    });
+    await Promise.all([bound, edited]);
+    expect(order).toEqual(["bind", "edit"]);
+    expect(projects[1].elements).toEqual(["cube"]);
+    expect(selections).toEqual(["a", "user"]);
+  });
+
+  test("a call that stops waiting leaves the queue and is not counted as queued work", async () => {
+    const { manager, bind } = fixture();
+    await bind("one", "a");
+    const events: string[] = [];
+    const holder = await occupy(manager, "one", events);
+    const controller = new AbortController();
+    const cancelled = manager.run({ sessionId: "one", signal: controller.signal }, () => { events.push("cancelled"); });
+    controller.abort();
+    await expect(cancelled).rejects.toThrow("cancelled before");
+    const waiting = manager.run({ sessionId: "one", queueTimeoutMs: 10 }, () => { events.push("timed-out"); });
+    // Only the timed-out caller itself was still queued.
+    await expect(waiting).rejects.toThrow("with 1 operation(s) queued");
+    holder.release();
+    await holder.running;
+    expect(events).toEqual(["one"]);
+  });
+});
+
+describe("deferred return to the user's tab", () => {
+  const idleRestoreMs = 25;
+  const idle = () => new Promise<void>((resolve) => setTimeout(resolve, idleRestoreMs * 3));
+
+  test("sequential calls reuse the active project and the user's tab returns once the editor is idle", async () => {
+    const { manager, bind, selections, current, editor } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    selections.length = 0;
+    for (const color of ["red", "green", "blue"]) {
+      await manager.run({ sessionId: "one" }, () => { editor().color = color; });
+      expect(current()?.uuid).toBe("a");
+    }
+    expect(selections).toEqual(["a"]);
+    await idle();
+    expect(selections).toEqual(["a", "user"]);
+    expect(editor()).toEqual({ camera: { x: 7 }, color: "user-color", time: 0 });
+    // The next call starts a new run from the workspace's own state.
+    expect(await manager.run({ sessionId: "one" }, () => editor().color)).toBe("blue");
+  });
+
+  test("a call arriving before the delay ends postpones the return", async () => {
+    const { manager, bind, selections } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    selections.length = 0;
+    await manager.run({ sessionId: "one" }, () => {});
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    await manager.run({ sessionId: "one" }, () => {});
+    expect(selections).toEqual(["a"]);
+    await idle();
+    expect(selections).toEqual(["a", "user"]);
+  });
+
+  test("a tab the user picks while the editor is idle is kept", async () => {
+    const { manager, bind, select, current, editor, restores } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    await manager.run({ sessionId: "one" }, () => { editor().color = "agent"; editor().camera.x = 1; });
+    expect(select("c")).toBe(true);
+    editor().camera.x = 50;
+    await idle();
+    expect(current()?.uuid).toBe("c");
+    expect(restores.at(-1)).toEqual({ projectChanged: true });
+    expect(editor()).toEqual({ camera: { x: 50 }, color: "user-color", time: 0 });
+  });
+
+  test("the picked tab becomes the user's tab for calls that follow", async () => {
+    const { manager, bind, select, current, editor } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    await manager.run({ sessionId: "one" }, () => { editor().color = "agent"; });
+    select("c");
+    expect(await manager.run({ sessionId: "one" }, () => [current()?.uuid, editor().color])).toEqual(["a", "agent"]);
+    await idle();
+    expect(current()?.uuid).toBe("c");
+    expect(editor().color).toBe("user-color");
+  });
+
+  test("editor changes the user makes on the workspace's tab do not leak into its next call", async () => {
+    const { manager, bind, editor, restores } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    await manager.run({ sessionId: "one" }, () => { editor().camera.x = 10; });
+    const untouched = restores.length;
+    expect(await manager.run({ sessionId: "one" }, () => editor().camera.x)).toBe(10);
+    // Nothing changed in between, so the state was not applied again.
+    expect(restores.length).toBe(untouched);
+    editor().camera.x = 99;
+    expect(await manager.run({ sessionId: "one" }, () => editor().camera.x)).toBe(10);
+  });
+
+  test("rebinding a live workspace reapplies its state to the newly activated project", async () => {
+    const { manager, bind, current, restores } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    await manager.run({ sessionId: "one" }, () => {});
+    await manager.run({ sessionId: "one", requireProject: false, usesEditor: false }, (context) => context.bindProject("b"));
+    const before = restores.length;
+    expect(await manager.run({ sessionId: "one" }, () => current()?.uuid)).toBe("b");
+    expect(restores.length).toBe(before + 1);
+  });
+
+  test("the user's tab returns at once when the last session disconnects", async () => {
+    const { manager, bind, current } = fixture({ idleRestoreMs: 60_000 });
+    await bind("one", "a");
+    await manager.run({ sessionId: "one" }, () => {});
+    expect(current()?.uuid).toBe("a");
+    manager.closeSession("one");
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(current()?.uuid).toBe("user");
+  });
+
+  test("a cancelled call still lets the user's tab return", async () => {
+    const { manager, bind, current } = fixture({ idleRestoreMs });
+    await bind("one", "a");
+    await manager.run({ sessionId: "one" }, () => {});
+    const controller = new AbortController();
+    const cancelled = manager.run({ sessionId: "one", signal: controller.signal }, () => {});
+    controller.abort();
+    await expect(cancelled).rejects.toThrow("cancelled before");
+    await idle();
+    expect(current()?.uuid).toBe("user");
+  });
+});
+
+describe("releasing projects", () => {
+  test("a workspace releases only its own projects and becomes unbound", async () => {
+    const { manager, bind } = fixture();
+    manager.openSession("two");
+    await bind("one", "a");
+    await bind("two", "b");
+    await expect(manager.run({ sessionId: "two", requireProject: false }, (context) => context.releaseProject("a")))
+      .rejects.toThrow("Only projects owned by this workspace");
+    const owned = await manager.run({ sessionId: "one", requireProject: false }, (context) => {
+      const before = context.ownsProject("a");
+      context.releaseProject("a");
+      return [before, context.ownsProject("a"), context.getProjectId()];
+    });
+    expect(owned).toEqual([true, false, undefined]);
+    await expect(manager.run({ sessionId: "one" }, () => {})).rejects.toThrow("no project");
+    // Released projects can be claimed by other workspaces again.
+    await bind("two", "a");
   });
 });

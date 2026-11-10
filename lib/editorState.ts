@@ -71,10 +71,12 @@ export function captureEditorState(): EditorState {
   return state;
 }
 
-export async function restoreEditorState(snapshot: unknown): Promise<void> {
+export async function restoreEditorState(snapshot: unknown, options: { projectChanged?: boolean } = {}): Promise<void> {
   const state = snapshot as EditorState | undefined;
   if (!state) return;
-  if (state.mode && typeof Modes !== "undefined" && typeof Project !== "undefined" && Project && Modes.id !== state.mode) {
+  // On another tab, Blockbench has already loaded that project's own mode, tool, camera and timeline.
+  const sameProject = !options.projectChanged;
+  if (sameProject && state.mode && typeof Modes !== "undefined" && typeof Project !== "undefined" && Project && Modes.id !== state.mode) {
     Modes.options[state.mode]?.select();
   }
   // Project and mode selection schedule animation/selection resets in Vue.
@@ -87,7 +89,7 @@ export async function restoreEditorState(snapshot: unknown): Promise<void> {
       for (const key of Object.keys(tool.tool_settings)) delete tool.tool_settings[key];
       Object.assign(tool.tool_settings, copy(values));
     }
-    const selectedTool = state.tool ? BarItems[state.tool] as unknown as { select?: () => void } : undefined;
+    const selectedTool = sameProject && state.tool ? BarItems[state.tool] as unknown as { select?: () => void } : undefined;
     selectedTool?.select?.();
     for (const [id, value] of Object.entries(state.controls)) {
       const item = BarItems[id] as ValueHolder | undefined;
@@ -107,6 +109,7 @@ export async function restoreEditorState(snapshot: unknown): Promise<void> {
     ColorPanel.set(state.colors[0], false, true);
     ColorPanel.set(state.colors[1], true, true);
   }
+  if (!sameProject) return;
   if (state.timeline && typeof Timeline !== "undefined") {
     Timeline.pause();
     Timeline.playback_speed = state.timeline.speed;

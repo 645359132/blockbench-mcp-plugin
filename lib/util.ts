@@ -174,7 +174,14 @@ export function getAndActivateTexture(id?: string): Texture {
  */
 export function findGroupOrThrow(name: string): Group {
   // @ts-ignore - Group is globally available in Blockbench
-  const group = Group.all.find((g: Group) => g.name === name);
+  // Armature bones are animatable and the animation tools address them by name,
+  // but they are not Groups, so search the rigs as well.
+  const bones: any[] = ((globalThis as any).Armature?.all ?? []).flatMap(
+    (armature: any) => armature.getAllBones?.() ?? []
+  );
+  const group =
+    Group.all.find((g: Group) => g.name === name) ??
+    bones.find((bone) => bone.name === name);
   if (!group) {
     throw new Error(
       `Bone/group "${name}" not found. Use the list_outline tool to see available groups and bones.`

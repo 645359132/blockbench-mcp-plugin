@@ -182,7 +182,7 @@ test("file snapshots decode file URLs and read bytes into an internal data URL",
 function createTexture(args: Record<string, unknown>, isolated = true) {
   const context = isolated ? {
     reportProgress() {},
-    workspace: { sessionId: "textures", workspaceId: "one", getProjectId: () => "one", bindProject() {} },
+    workspace: { sessionId: "textures", workspaceId: "one", getProjectId: () => "one", bindProject() {}, ownsProject: () => true, releaseProject() {} },
   } : undefined;
   return getAllToolDefinitions().create_texture.execute({ name: "test", width: 32, height: 64, ...args }, context);
 }

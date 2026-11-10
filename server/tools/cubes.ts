@@ -155,6 +155,7 @@ createTool(cubeToolDocs[0].name, {
     const cubes = elements.map((element: Cube) => {
       const cube = new Cube({
         autouv: autouv ? 1 : 0,
+        ...(!autouv && Array.isArray(faces) ? { box_uv: false } : {}),
         name: element.name,
         from: element.from as [number, number, number],
         to: element.to as [number, number, number],
@@ -165,9 +166,11 @@ createTool(cubeToolDocs[0].name, {
       cube.addTo(outlinerGroup);
 
       if (!autouv && Array.isArray(faces)) {
+        cube.box_uv = false;
         faces.forEach(({ face, uv }) => {
           cube.faces[face].extend({
             uv: uv as [number, number, number, number],
+            texture: projectTexture.uuid,
           });
         });
       } else {

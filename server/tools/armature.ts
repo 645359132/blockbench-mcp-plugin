@@ -7,6 +7,7 @@ import {
   elementIdSchema,
   vector3Schema,
   meshIdOptionalSchema,
+  meshIdSchema,
 } from "@/lib/zodObjects";
 
 // ============================================================================
@@ -268,6 +269,16 @@ export const clearVertexWeightsParameters = z.object({
   mesh_id: meshIdOptionalSchema,
 });
 
+export const bindMeshToArmatureParameters = z.object({
+  mesh_id: meshIdSchema,
+  armature_id: elementIdSchema.describe("UUID or name of the target armature."),
+  force: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Allow moving a mesh that is already attached to a different armature."),
+});
+
 // ============================================================================
 // Armature Tool Docs
 // ============================================================================
@@ -440,6 +451,17 @@ export const armatureToolDocs: ToolSpec[] = [
     parameters: clearVertexWeightsParameters,
     status: STATUS_EXPERIMENTAL,
   },
+  {
+    name: "bind_mesh_to_armature",
+    description:
+      "Attaches a mesh directly to an armature so its bones can deform the mesh. Existing vertex weights are preserved.",
+    annotations: {
+      title: "Bind Mesh to Armature",
+      destructiveHint: true,
+    },
+    parameters: bindMeshToArmatureParameters,
+    status: STATUS_EXPERIMENTAL,
+  },
 ];
 
 // ============================================================================
@@ -503,7 +525,7 @@ export function registerArmatureTools() {
         visibility,
         locked,
       });
-      armature.addTo(Outliner.root as any);
+      armature.addTo(Outliner.ROOT as any);
       armature.isOpen = true;
       armature.createUniqueName();
       armature.init();
@@ -962,7 +984,7 @@ export function registerArmatureTools() {
       Undo.initEdit({ elements: [bone] });
 
       let count = 0;
-      for (const [vertex_key, weight] of Object.entries(weights)) {
+      for (const [vertex_key, weight] of Object.entries(weights as Record<string, number>)) {
         if (vertex_key in mesh.vertices) {
           bone.setVertexWeight(mesh, vertex_key, weight);
           count++;
@@ -1038,4 +1060,48 @@ export function registerArmatureTools() {
       );
     },
   }, armatureToolDocs[15].status);
+
+  // ---------------------------------------------------------------------------
+  // Bind Mesh to Armature
+  // ---------------------------------------------------------------------------
+  createTool(armatureToolDocs[16].name, {
+    ...armatureToolDocs[16],
+    async execute({ mesh_id, armature_id, force }) {
+      const mesh = findMesh(mesh_id);
+      if (!mesh) {
+        throw new Error(`Mesh not found: ${mesh_id}`);
+      }
+      const armature = findArmatureOrThrow(armature_id);
+      const currentArmature = mesh.getArmature?.();
+
+      if (currentArmature && currentArmature.uuid !== armature.uuid && !force) {
+        throw new Error(
+          `Mesh "${mesh.name}" is already attached to armature "${currentArmature.name}". Pass force=true to rebind it.`
+        );
+      }
+
+      Undo.initEdit({ outliner: true, elements: [mesh, armature] });
+      mesh.addTo(armature);
+      mesh.armature = armature.uuid;
+      mesh.updateElement();
+      Undo.finishEdit("Agent bound mesh to armature", {
+        outliner: true,
+        elements: [mesh, armature],
+      });
+      Canvas.updateAll();
+
+      return JSON.stringify(
+        {
+          mesh: { uuid: mesh.uuid, name: mesh.name },
+          armature: { uuid: armature.uuid, name: armature.name },
+          previous_armature: currentArmature
+            ? { uuid: currentArmature.uuid, name: currentArmature.name }
+            : null,
+          weights_preserved: true,
+        },
+        null,
+        2
+      );
+    },
+  }, armatureToolDocs[16].status);
 }

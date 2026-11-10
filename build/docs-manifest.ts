@@ -18,6 +18,7 @@ import { materialInstanceToolDocs } from "../server/tools/material-instances";
 import { uvToolDocs } from "../server/tools/uv";
 import { historyToolDocs } from "../server/tools/history";
 import { exportToolDocs } from "../server/tools/export";
+import { neteaseToolDocs } from "../server/tools/netease";
 
 export interface CategoryGroup {
   category: string;
@@ -35,6 +36,7 @@ export const toolManifest: CategoryGroup[] = [
   { category: "Import/Export", tools: importToolDocs },
   { category: "Material Instances", tools: materialInstanceToolDocs },
   { category: "Mesh Editing", tools: meshToolDocs },
+  { category: "NetEase Integration", tools: neteaseToolDocs },
   { category: "Paint Tools", tools: paintToolDocs },
   { category: "Project", tools: projectToolDocs },
   { category: "Textures", tools: textureToolDocs },

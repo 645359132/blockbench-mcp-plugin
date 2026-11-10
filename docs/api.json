@@ -1,6 +1,6 @@
 {
   "version": "1.6.1",
-  "generatedAt": "2026-09-10T07:00:38.998Z",
+  "generatedAt": "2026-11-10T16:51:09.343Z",
   "tools": [
     {
       "name": "place_cube",
@@ -1017,6 +1017,16 @@
           "animation_timeline": {
             "type": "object",
             "properties": {
+              "animation_id": {
+                "type": "string",
+                "description": "Animation UUID or name. If not provided, uses current animation.",
+                "markdownDescription": "Animation UUID or name. If not provided, uses current animation."
+              },
+              "capture_frame": {
+                "type": "boolean",
+                "description": "Return a native viewport image after seeking, before the workspace restores editor state.",
+                "markdownDescription": "Return a native viewport image after seeking, before the workspace restores editor state."
+              },
               "action": {
                 "type": "string",
                 "enum": [
@@ -2210,6 +2220,56 @@
       }
     },
     {
+      "name": "bind_mesh_to_armature",
+      "title": "Bind Mesh to Armature",
+      "description": "Attaches a mesh directly to an armature so its bones can deform the mesh. Existing vertex weights are preserved.",
+      "status": "experimental",
+      "category": "Armature",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/bind_mesh_to_armature",
+        "definitions": {
+          "bind_mesh_to_armature": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "ID or name of the mesh.",
+                "markdownDescription": "ID or name of the mesh."
+              },
+              "armature_id": {
+                "type": "string",
+                "description": "UUID or name of the target armature.",
+                "markdownDescription": "UUID or name of the target armature."
+              },
+              "force": {
+                "type": "boolean",
+                "default": false,
+                "description": "Allow moving a mesh that is already attached to a different armature.",
+                "markdownDescription": "Allow moving a mesh that is already attached to a different armature."
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "required": [
+              "mesh_id",
+              "armature_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
       "name": "remove_element",
       "title": "Remove Element",
       "description": "Removes the element with the given ID.",
@@ -2793,6 +2853,56 @@
       }
     },
     {
+      "name": "bedrock_export_animations",
+      "title": "Export Bedrock Animations",
+      "description": "Compiles the named animations of the bound project with Blockbench's native Bedrock animation codec and writes them to one `.json` file. Keyframe interpolation and coordinate conversion are Blockbench's own; nothing is serialized by hand.",
+      "status": "experimental",
+      "category": "Export",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/bedrock_export_animations",
+        "definitions": {
+          "bedrock_export_animations": {
+            "type": "object",
+            "properties": {
+              "animations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "description": "Names (e.g. 'animation.phoenix.rebirth') or UUIDs of the bound project's animations to compile into one file.",
+                "markdownDescription": "Names (e.g. 'animation.phoenix.rebirth') or UUIDs of the bound project's animations to compile into one file."
+              },
+              "path": {
+                "type": "string",
+                "description": "Absolute filesystem path of the `.json` animation file to write. Missing parent directories are created. Requires user permission (Blockbench v5.0+ prompts for 'fs' access).",
+                "markdownDescription": "Absolute filesystem path of the `.json` animation file to write. Missing parent directories are created. Requires user permission (Blockbench v5.0+ prompts for 'fs' access)."
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "required": [
+              "animations",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
       "name": "undo",
       "title": "Undo",
       "description": "Undoes the most recent edit in the current project. Use `steps` to undo multiple edits in a single call. Returns the action(s) that were undone.",
@@ -3268,7 +3378,7 @@
     {
       "name": "place_mesh",
       "title": "Place Mesh",
-      "description": "Places a mesh at the specified position. Texture and group are optional.",
+      "description": "Creates one or more polygon meshes from indexed vertices and triangle/quad faces. Supports transforms, UVs, per-face textures, and an optional parent group.",
       "status": "experimental",
       "category": "Mesh Editing",
       "annotations": {
@@ -3348,6 +3458,64 @@
                       "default": [],
                       "description": "Vertices of the mesh.",
                       "markdownDescription": "Vertices of the mesh."
+                    },
+                    "faces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "vertices": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "minItems": 3,
+                            "maxItems": 4,
+                            "description": "Zero-based vertex indices. Use counter-clockwise order when viewing the front of the face.",
+                            "markdownDescription": "Zero-based vertex indices. Use counter-clockwise order when viewing the front of the face."
+                          },
+                          "uv": {
+                            "type": "array",
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 2,
+                              "maxItems": 2,
+                              "description": "2D vector [x, y].",
+                              "markdownDescription": "2D vector [x, y]."
+                            },
+                            "minItems": 3,
+                            "maxItems": 4,
+                            "description": "UV coordinate for each entry in vertices, in the same order.",
+                            "markdownDescription": "UV coordinate for each entry in vertices, in the same order."
+                          },
+                          "texture": {
+                            "type": "string",
+                            "description": "Optional texture ID or name overriding the mesh-level texture for this face.",
+                            "markdownDescription": "Optional texture ID or name overriding the mesh-level texture for this face."
+                          }
+                        },
+                        "required": [
+                          "vertices"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "default": [],
+                      "description": "Triangle or quad faces referencing vertices by zero-based index.",
+                      "markdownDescription": "Triangle or quad faces referencing vertices by zero-based index."
+                    },
+                    "shading": {
+                      "type": "string",
+                      "enum": [
+                        "flat",
+                        "smooth"
+                      ],
+                      "default": "flat",
+                      "description": "Mesh shading mode.",
+                      "markdownDescription": "Mesh shading mode."
                     }
                   },
                   "required": [
@@ -4047,6 +4215,369 @@
             "required": [
               "mesh_id",
               "points"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "get_mesh",
+      "title": "Get Mesh",
+      "description": "Returns complete mesh topology, transforms, per-face UVs and textures, plus optional armature weights. Vertex indices match the order returned in vertices.",
+      "status": "stable",
+      "category": "Mesh Editing",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/get_mesh",
+        "definitions": {
+          "get_mesh": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "ID or name of the mesh. If not provided, uses selected mesh.",
+                "markdownDescription": "ID or name of the mesh. If not provided, uses selected mesh."
+              },
+              "include_weights": {
+                "type": "boolean",
+                "default": true,
+                "description": "Include non-zero armature weights for each vertex.",
+                "markdownDescription": "Include non-zero armature weights for each vertex."
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "netease_get_format_info",
+      "title": "NetEase Format Readiness",
+      "description": "Reports whether the current Blockbench project has the mesh and armature features needed for NetEase skeletal-model authoring. This does not claim runtime-format compatibility.",
+      "status": "experimental",
+      "category": "NetEase Integration",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/netease_get_format_info",
+        "definitions": {
+          "netease_get_format_info": {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "netease_validate_model",
+      "title": "Validate NetEase Source Model",
+      "description": "Validates the current polygon mesh, armature, textures and vertex weights against a conservative NetEase skeletal-model authoring profile. It validates source readiness, not converted runtime JSON.",
+      "status": "experimental",
+      "category": "NetEase Integration",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/netease_validate_model",
+        "definitions": {
+          "netease_validate_model": {
+            "type": "object",
+            "properties": {
+              "strict_rigid_skinning": {
+                "type": "boolean",
+                "default": true,
+                "description": "Require every vertex to be assigned to exactly one bone.",
+                "markdownDescription": "Require every vertex to be assigned to exactly one bone."
+              },
+              "recommended_max_vertices": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 300
+              },
+              "hard_max_vertices": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 1000
+              },
+              "enforce_vertex_hard_limit": {
+                "type": "boolean",
+                "default": false,
+                "description": "Treat hard_max_vertices as an error. Disabled by default because observed NetEase effect models can be much larger.",
+                "markdownDescription": "Treat hard_max_vertices as an error. Disabled by default because observed NetEase effect models can be much larger."
+              },
+              "recommended_max_bones": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 20
+              },
+              "hard_max_bones": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 50
+              },
+              "max_textures": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "default": 1
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "netease_assign_rigid_weights",
+      "title": "Assign NetEase Rigid Weights",
+      "description": "Assigns selected mesh vertices to one armature bone with weight 1, optionally clearing all other bone influences. This matches the conservative rigid-skinning profile.",
+      "status": "experimental",
+      "category": "NetEase Integration",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/netease_assign_rigid_weights",
+        "definitions": {
+          "netease_assign_rigid_weights": {
+            "type": "object",
+            "properties": {
+              "mesh_id": {
+                "type": "string",
+                "description": "ID or name of the mesh.",
+                "markdownDescription": "ID or name of the mesh."
+              },
+              "bone_id": {
+                "type": "string",
+                "description": "UUID or name of a bone in the mesh's armature.",
+                "markdownDescription": "UUID or name of a bone in the mesh's armature."
+              },
+              "vertices": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "description": "Vertex keys to assign. If omitted, assigns every vertex in the mesh.",
+                "markdownDescription": "Vertex keys to assign. If omitted, assigns every vertex in the mesh."
+              },
+              "clear_other_bones": {
+                "type": "boolean",
+                "default": true,
+                "description": "Remove the selected vertices from every other bone before assigning weight 1.",
+                "markdownDescription": "Remove the selected vertices from every other bone before assigning weight 1."
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "required": [
+              "mesh_id",
+              "bone_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "netease_export_resource_pack",
+      "title": "Export NetEase Resource Pack",
+      "description": "Exports the selected Blockbench armature as NetEase China Edition mesh, skeleton, animation, registry, interchange, and texture files. Animations require numeric linear keyframes with one data point and rotation steps of at most 180 degrees per axis. Existing netease_models.json entries are preserved.",
+      "status": "experimental",
+      "category": "NetEase Integration",
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/netease_export_resource_pack",
+        "definitions": {
+          "netease_export_resource_pack": {
+            "type": "object",
+            "properties": {
+              "model_name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "errorMessage": {
+                  "pattern": "Use lowercase ASCII letters, digits, and underscores; start with a letter."
+                },
+                "description": "Model identifier used in filenames and netease_models.json.",
+                "markdownDescription": "Model identifier used in filenames and netease_models.json."
+              },
+              "output_path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Absolute path to the resource-pack root. Files are written below models/ and textures/models/.",
+                "markdownDescription": "Absolute path to the resource-pack root. Files are written below models/ and textures/models/."
+              },
+              "armature_id": {
+                "type": "string",
+                "description": "Armature UUID or name. Required when multiple exported armatures exist.",
+                "markdownDescription": "Armature UUID or name. Required when multiple exported armatures exist."
+              },
+              "centimeters_per_unit": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "default": 1,
+                "description": "Scale applied to Blockbench coordinates. Blockbench axes already match the NetEase Y-up model space.",
+                "markdownDescription": "Scale applied to Blockbench coordinates. Blockbench axes already match the NetEase Y-up model space."
+              },
+              "include_animations": {
+                "type": "boolean",
+                "default": true
+              },
+              "animation_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Animation UUIDs, full names, or short names to export. Omit to export all armature animations.",
+                "markdownDescription": "Animation UUIDs, full names, or short names to export. Omit to export all armature animations."
+              },
+              "material": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "default": "entity_for_skeleton",
+                "description": "NetEase render material or ordered multi-pass material list.",
+                "markdownDescription": "NetEase render material or ordered multi-pass material list."
+              },
+              "material_cpu": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "texture": {
+                "type": "object",
+                "properties": {
+                  "tex0": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "errorMessage": {
+                      "pattern": "Use lowercase ASCII letters, digits, and underscores; start with a letter."
+                    }
+                  },
+                  "tex1": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "errorMessage": {
+                      "pattern": "Use lowercase ASCII letters, digits, and underscores; start with a letter."
+                    }
+                  },
+                  "tex2": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "errorMessage": {
+                      "pattern": "Use lowercase ASCII letters, digits, and underscores; start with a letter."
+                    }
+                  },
+                  "tex3": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "errorMessage": {
+                      "pattern": "Use lowercase ASCII letters, digits, and underscores; start with a letter."
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Optional texture overrides below textures/models, without file extensions.",
+                "markdownDescription": "Optional texture overrides below textures/models, without file extensions."
+              },
+              "arm_model": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "errorMessage": {
+                  "pattern": "Use lowercase ASCII letters, digits, and underscores; start with a letter."
+                }
+              },
+              "use_split_meshes": {
+                "type": "boolean",
+                "default": false
+              },
+              "split_bones_group": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "dy_load": {
+                "type": "boolean",
+                "default": true
+              },
+              "copy_textures": {
+                "type": "boolean",
+                "default": true
+              },
+              "compact": {
+                "type": "boolean",
+                "default": false
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "required": [
+              "model_name",
+              "output_path"
             ],
             "additionalProperties": false
           }
@@ -5254,7 +5785,7 @@
     {
       "name": "create_project",
       "title": "Create Project",
-      "description": "Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call.",
+      "description": "Creates a new project and binds it to this session's workspace. Agents sharing one connection must pass their unique workspace_id on every call. Every project is a Blockbench tab that stays open until closed: call close_project when you are finished with it.",
       "status": "stable",
       "category": "Project",
       "annotations": {
@@ -5275,6 +5806,12 @@
                 "default": "bedrock_block",
                 "description": "Project format ID from Blockbench's Formats registry.",
                 "markdownDescription": "Project format ID from Blockbench's Formats registry."
+              },
+              "rebind": {
+                "type": "boolean",
+                "default": false,
+                "description": "Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id.",
+                "markdownDescription": "Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id."
               },
               "workspace_id": {
                 "type": "string",
@@ -5345,6 +5882,12 @@
                 "description": "UUID of an open project returned by list_projects. Must be unclaimed or owned by this workspace.",
                 "markdownDescription": "UUID of an open project returned by list_projects. Must be unclaimed or owned by this workspace."
               },
+              "rebind": {
+                "type": "boolean",
+                "default": false,
+                "description": "Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id.",
+                "markdownDescription": "Set true to move this workspace's binding away from a project it already owns. Leave false: the refusal tells agents sharing a connection that they forgot their own workspace_id."
+              },
               "workspace_id": {
                 "type": "string",
                 "minLength": 1,
@@ -5378,6 +5921,48 @@
           "list_projects": {
             "type": "object",
             "properties": {
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project.",
+                "markdownDescription": "Workspace within this MCP session (default: default). Agents sharing a connection must each choose a unique ID and pass it on EVERY tool call, including create_project."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      }
+    },
+    {
+      "name": "close_project",
+      "title": "Close Project",
+      "description": "Closes a project tab this workspace created or selected, freeing its memory, and unbinds it from the workspace. Projects opened by the user or owned by other workspaces cannot be closed. Unsaved projects are refused unless discard_unsaved is true, so export the model first.",
+      "status": "stable",
+      "category": "Project",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "parameters": {
+        "$ref": "#/definitions/close_project",
+        "definitions": {
+          "close_project": {
+            "type": "object",
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "UUID of a project owned by this workspace. Defaults to the workspace's bound project.",
+                "markdownDescription": "UUID of a project owned by this workspace. Defaults to the workspace's bound project."
+              },
+              "discard_unsaved": {
+                "type": "boolean",
+                "default": false,
+                "description": "Close even if the project has unsaved changes. Export the model first (export_model); closing discards the in-editor copy.",
+                "markdownDescription": "Close even if the project has unsaved changes. Export the model first (export_model); closing discards the in-editor copy."
+              },
               "workspace_id": {
                 "type": "string",
                 "minLength": 1,

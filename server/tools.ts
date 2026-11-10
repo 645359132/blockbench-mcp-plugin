@@ -19,6 +19,7 @@ import { registerMaterialInstanceTools } from "./tools/material-instances";
 import { registerArmatureTools } from "./tools/armature";
 import { registerHistoryTools } from "./tools/history";
 import { registerExportTools } from "./tools/export";
+import { registerNeteaseTools } from "./tools/netease";
 
 // Core resource registrations
 import { registerValidatorResources } from "./resources/validator";
@@ -40,6 +41,7 @@ const registrationFunctions = [
   registerImportTools,
   registerMaterialInstanceTools,
   registerMeshTools,
+  registerNeteaseTools,
   registerPaintTools,
   registerProjectTools,
   registerTextureTools,

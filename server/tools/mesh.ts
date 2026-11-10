@@ -15,6 +15,14 @@ import {
 import { STATUS_EXPERIMENTAL, STATUS_STABLE } from "@/lib/constants";
 import { getProjectTexture, getMeshOrSelected, findMeshOrThrow } from "@/lib/util";
 
+type MeshInput = z.infer<typeof meshSchema>;
+
+interface CreatedMeshResult {
+  mesh: Mesh;
+  vertexKeys: string[];
+  faceKeys: string[];
+}
+
 // ============================================================================
 // Mesh Tool Parameter Schemas
 // ============================================================================
@@ -26,6 +34,15 @@ export const placeMeshParameters = z.object({
     .describe("Array of meshes to place."),
   texture: textureIdOptionalSchema.describe("Texture ID or name to apply to the mesh."),
   group: groupIdOptionalSchema.describe("Group/bone to which the mesh belongs."),
+});
+
+export const getMeshParameters = z.object({
+  mesh_id: meshIdOptionalSchema,
+  include_weights: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Include non-zero armature weights for each vertex."),
 });
 
 export const extrudeMeshParameters = z.object({
@@ -194,7 +211,7 @@ export const meshToolDocs: ToolSpec[] = [
   {
     name: "place_mesh",
     description:
-      "Places a mesh at the specified position. Texture and group are optional.",
+      "Creates one or more polygon meshes from indexed vertices and triangle/quad faces. Supports transforms, UVs, per-face textures, and an optional parent group.",
     annotations: {
       title: "Place Mesh",
       destructiveHint: true,
@@ -302,6 +319,17 @@ export const meshToolDocs: ToolSpec[] = [
     parameters: knifeToolParameters,
     status: STATUS_EXPERIMENTAL,
   },
+  {
+    name: "get_mesh",
+    description:
+      "Returns complete mesh topology, transforms, per-face UVs and textures, plus optional armature weights. Vertex indices match the order returned in vertices.",
+    annotations: {
+      title: "Get Mesh",
+      readOnlyHint: true,
+    },
+    parameters: getMeshParameters,
+    status: STATUS_STABLE,
+  },
 ];
 
 // ============================================================================
@@ -311,20 +339,41 @@ export const meshToolDocs: ToolSpec[] = [
 export function registerMeshTools() {
   createTool(meshToolDocs[0].name, {
     ...meshToolDocs[0],
-    async execute({ elements, texture, group }, { reportProgress }) {
-      Undo.initEdit({
-        elements: [],
-        outliner: true,
-        collections: [],
-      });
+    async execute({ elements, texture, group }, context) {
+      const reportProgress = context?.reportProgress ?? (() => undefined);
       const total = elements.length;
 
-      const projectTexture = texture
-        ? getProjectTexture(texture)
-        : Texture.getDefault();
+      const projectTexture = texture ? getProjectTexture(texture) : Texture.getDefault();
 
-      if (!projectTexture) {
+      if (texture && !projectTexture) {
         throw new Error(`No texture found for "${texture}".`);
+      }
+
+      for (const element of elements) {
+        for (const [faceIndex, inputFace] of element.faces.entries()) {
+          if (inputFace.uv && inputFace.uv.length !== inputFace.vertices.length) {
+            throw new Error(
+              `Mesh "${element.name}" face ${faceIndex} has ${inputFace.vertices.length} vertices but ${inputFace.uv.length} UV coordinates.`
+            );
+          }
+          if (new Set(inputFace.vertices).size !== inputFace.vertices.length) {
+            throw new Error(
+              `Mesh "${element.name}" face ${faceIndex} references the same vertex more than once.`
+            );
+          }
+          for (const vertexIndex of inputFace.vertices) {
+            if (vertexIndex >= element.vertices.length) {
+              throw new Error(
+                `Mesh "${element.name}" face ${faceIndex} references missing vertex index ${vertexIndex}.`
+              );
+            }
+          }
+          if (inputFace.texture && !getProjectTexture(inputFace.texture)) {
+            throw new Error(
+              `Mesh "${element.name}" face ${faceIndex} references missing texture "${inputFace.texture}".`
+            );
+          }
+        }
       }
 
       // @ts-expect-error getAllGroups is a utility function that returns all groups in the project
@@ -333,33 +382,93 @@ export function registerMeshTools() {
         ? "root"
         : groups.find((g: Group) => g.name === group || g.uuid === group) ?? "root";
 
-      const meshes = elements.map((element, progress) => {
+      Undo.initEdit({
+        elements: [],
+        outliner: true,
+        collections: [],
+      });
+
+      const meshes: CreatedMeshResult[] = elements.map((element: MeshInput, progress: number) => {
         const mesh = new Mesh({
           name: element.name,
           vertices: {},
+          origin: element.position as [number, number, number],
+          rotation: element.rotation as [number, number, number],
+          shading: element.shading,
         }).init();
 
-        element.vertices.forEach((vertex) => {
-          mesh.addVertices(vertex as ArrayVector3);
-        });
+        const scaledVertices = element.vertices.map((vertex: number[]) => [
+          vertex[0] * element.scale[0],
+          vertex[1] * element.scale[1],
+          vertex[2] * element.scale[2],
+        ] as ArrayVector3);
+        const vertexKeys = mesh.addVertices(...scaledVertices);
+        const faceKeys: string[] = [];
+        const autoUvFaceKeys: string[] = [];
+
+        for (const [faceIndex, inputFace] of element.faces.entries()) {
+          const faceVertexKeys = inputFace.vertices.map((vertexIndex: number) => {
+            return vertexKeys[vertexIndex]!;
+          });
+          const faceTexture = inputFace.texture
+            ? getProjectTexture(inputFace.texture)
+            : projectTexture;
+          const uv = Object.fromEntries(
+            faceVertexKeys.map((vertexKey: string, uvIndex: number) => [
+              vertexKey,
+              inputFace.uv?.[uvIndex] ?? [0, 0],
+            ])
+          ) as Record<string, ArrayVector2>;
+          const [faceKey] = mesh.addFaces(
+            new MeshFace(mesh, {
+              vertices: faceVertexKeys,
+              uv,
+              texture: faceTexture?.uuid,
+            })
+          );
+          faceKeys.push(faceKey);
+          if (!inputFace.uv) autoUvFaceKeys.push(faceKey);
+        }
 
         mesh.addTo(outlinerGroup);
-        mesh.applyTexture(projectTexture);
+        if (autoUvFaceKeys.length > 0) {
+          // Native auto UV uses its receiver's mapping targets. Scope the call
+          // to this mesh while preserving the editor's current selection.
+          const scopedUvEditor = Object.create(UVEditor);
+          scopedUvEditor.getMappableElements = () => [mesh];
+          scopedUvEditor.setAutoSize(null, true, autoUvFaceKeys);
+        }
 
         reportProgress({
           progress,
           total,
         });
 
-        return mesh;
+        return {
+          mesh,
+          vertexKeys,
+          faceKeys,
+        };
       });
 
-      Undo.finishEdit("Agent placed meshes");
+      Undo.finishEdit("Agent placed meshes", {
+        elements: meshes.map(({ mesh }) => mesh),
+        outliner: true,
+        collections: [],
+      });
       Canvas.updateAll();
 
       return await Promise.resolve(
         JSON.stringify(
-          meshes.map((mesh) => `Added mesh ${mesh.name} with ID ${mesh.uuid}`)
+          meshes.map(({ mesh, vertexKeys, faceKeys }: CreatedMeshResult) => ({
+            name: mesh.name,
+            uuid: mesh.uuid,
+            vertex_keys: vertexKeys,
+            face_keys: faceKeys,
+            scale_baked_into_vertices: true,
+          })),
+          null,
+          2
         )
       );
     },
@@ -404,7 +513,8 @@ export function registerMeshTools() {
 
   createTool(meshToolDocs[3].name, {
     ...meshToolDocs[3],
-    async execute({ elements, texture, group }, { reportProgress }) {
+    async execute({ elements, texture, group }, context) {
+      const reportProgress = context?.reportProgress ?? (() => undefined);
       Undo.initEdit({
         elements: [],
         outliner: true,
@@ -426,7 +536,7 @@ export function registerMeshTools() {
         ? "root"
         : groups.find((g: Group) => g.name === group || g.uuid === group) ?? "root";
 
-      const spheres = elements.map((element, progress) => {
+      const spheres = elements.map((element: z.infer<typeof createSphereParameters>["elements"][number], progress: number) => {
         const mesh = new Mesh({
           name: element.name,
           vertices: {},
@@ -531,7 +641,7 @@ export function registerMeshTools() {
       return await Promise.resolve(
         JSON.stringify(
           spheres.map(
-            (sphere) => `Added sphere ${sphere.name} with ID ${sphere.uuid}`
+            (sphere: Mesh) => `Added sphere ${sphere.name} with ID ${sphere.uuid}`
           )
         )
       );
@@ -597,7 +707,7 @@ export function registerMeshTools() {
         }
       } else {
         // Select specific elements
-        elements.forEach((element) => {
+        elements.forEach((element: string | number) => {
           if (mode === "vertex") {
             const vkey = String(element);
             if (action === "add" || action === "select") {
@@ -699,11 +809,11 @@ export function registerMeshTools() {
           uv: true,
           faces: true,
         },
-      });
+      } as any); // Blockbench runtime supports element_aspects; current public types omit it.
 
       const verticesToMove = vertices || mesh.getSelectedVertices();
 
-      verticesToMove.forEach((vkey) => {
+      verticesToMove.forEach((vkey: string) => {
         if (mesh.vertices[vkey]) {
           mesh.vertices[vkey][0] += offset[0];
           mesh.vertices[vkey][1] += offset[1];
@@ -757,7 +867,7 @@ export function registerMeshTools() {
           uv: true,
           faces: true,
         },
-      });
+      } as any); // Blockbench runtime supports element_aspects; current public types omit it.
 
       const verticesToCheck = selected_only
         ? mesh.getSelectedVertices()
@@ -832,7 +942,7 @@ export function registerMeshTools() {
           uv: true,
           faces: true,
         },
-      });
+      } as any); // Blockbench runtime supports element_aspects; current public types omit it.
 
       // Create the face
       const face = new MeshFace(mesh, {
@@ -864,7 +974,8 @@ export function registerMeshTools() {
 
   createTool(meshToolDocs[9].name, {
     ...meshToolDocs[9],
-    async execute({ elements, texture, group }, { reportProgress }) {
+    async execute({ elements, texture, group }, context) {
+      const reportProgress = context?.reportProgress ?? (() => undefined);
       Undo.initEdit({ elements: [], outliner: true, collections: [] });
       const total = elements.length;
       const projectTexture = texture
@@ -876,7 +987,7 @@ export function registerMeshTools() {
       const outlinerGroup = group === "root"
         ? "root"
         : groups.find((g: Group) => g.name === group || g.uuid === group) ?? "root";
-      const cylinders = elements.map((element, progress) => {
+      const cylinders = elements.map((element: z.infer<typeof createCylinderParameters>["elements"][number], progress: number) => {
         const mesh = new Mesh({
           name: element.name,
           vertices: {},
@@ -941,7 +1052,7 @@ export function registerMeshTools() {
       Undo.finishEdit("Agent created cylinders");
       Canvas.updateAll();
       return JSON.stringify(
-        cylinders.map((c) => `Added cylinder ${c.name} (ID ${c.uuid})`)
+        cylinders.map((c: Mesh) => `Added cylinder ${c.name} (ID ${c.uuid})`)
       );
     },
   }, meshToolDocs[9].status);
@@ -958,16 +1069,16 @@ export function registerMeshTools() {
           uv: true,
           faces: true,
         },
-      });
+      } as any); // Blockbench runtime supports element_aspects; current public types omit it.
 
       // Create knife tool context
       // @ts-ignore
       const knifeContext = new KnifeToolContext(mesh);
 
       // Add points to the knife path
-      points.forEach((point) => {
+      points.forEach((point: z.infer<typeof knifeToolParameters>["points"][number]) => {
         knifeContext.points.push({
-          position: new THREE.Vector3(...point.position),
+          position: new (globalThis as any).THREE.Vector3(...point.position),
           fkey: point.face,
           type: point.face ? "face" : "edge",
         });
@@ -989,4 +1100,70 @@ export function registerMeshTools() {
       return `Applied knife cut to mesh "${mesh.name}" with ${points.length} points`;
     },
   }, meshToolDocs[10].status);
+
+  createTool(meshToolDocs[11].name, {
+    ...meshToolDocs[11],
+    async execute({ mesh_id, include_weights }) {
+      const mesh = getMeshOrSelected(mesh_id);
+      const vertexEntries = Object.entries(mesh.vertices);
+      const vertexIndex = new Map(vertexEntries.map(([key], index) => [key, index]));
+      const armature = mesh.getArmature?.();
+      const bones = armature?.getAllBones?.() ?? [];
+
+      const vertices = vertexEntries.map(([key, position], index) => {
+        const weights = include_weights
+          ? bones.flatMap((bone: ArmatureBone) => {
+              const weight = bone.getVertexWeight(mesh, key);
+              return weight > 0
+                ? [{ bone_uuid: bone.uuid, bone_name: bone.name, weight }]
+                : [];
+            })
+          : undefined;
+        return { index, key, position, ...(include_weights ? { weights } : {}) };
+      });
+
+      const faces = Object.entries(mesh.faces).map(([key, face]) => {
+        const texture = face.texture
+          ? Texture.all.find(
+              (candidate: Texture) =>
+                candidate.uuid === face.texture || String(candidate.id) === String(face.texture)
+            )
+          : undefined;
+        return {
+          key,
+          vertices: face.vertices.map((vertexKey) => ({
+            index: vertexIndex.get(vertexKey),
+            key: vertexKey,
+            uv: face.uv[vertexKey] ?? null,
+          })),
+          texture: texture
+            ? { uuid: texture.uuid, id: texture.id, name: texture.name }
+            : face.texture || null,
+        };
+      });
+
+      return JSON.stringify(
+        {
+          mesh: {
+            uuid: mesh.uuid,
+            name: mesh.name,
+            origin: mesh.origin,
+            rotation: mesh.rotation,
+            shading: mesh.shading,
+            parent:
+              mesh.parent && typeof mesh.parent === "object"
+                ? { uuid: mesh.parent.uuid, name: mesh.parent.name, type: mesh.parent.type }
+                : mesh.parent,
+            armature: armature
+              ? { uuid: armature.uuid, name: armature.name }
+              : null,
+          },
+          vertices,
+          faces,
+        },
+        null,
+        2
+      );
+    },
+  }, meshToolDocs[11].status);
 }

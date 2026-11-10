@@ -45,6 +45,21 @@ export const exportModelParameters = z.object({
     ),
 });
 
+export const bedrockExportAnimationsParameters = z.object({
+  animations: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((names) => new Set(names).size === names.length, "Animation names must be unique.")
+    .describe(
+      "Names (e.g. 'animation.phoenix.rebirth') or UUIDs of the bound project's animations to compile into one file."
+    ),
+  path: z
+    .string()
+    .describe(
+      "Absolute filesystem path of the `.json` animation file to write. Missing parent directories are created. Requires user permission (Blockbench v5.0+ prompts for 'fs' access)."
+    ),
+});
+
 export const exportToolDocs: ToolSpec[] = [
   {
     name: "list_export_formats",
@@ -67,6 +82,18 @@ export const exportToolDocs: ToolSpec[] = [
       openWorldHint: true,
     },
     parameters: exportModelParameters,
+    status: STATUS_EXPERIMENTAL,
+  },
+  {
+    name: "bedrock_export_animations",
+    description:
+      "Compiles the named animations of the bound project with Blockbench's native Bedrock animation codec and writes them to one `.json` file. Keyframe interpolation and coordinate conversion are Blockbench's own; nothing is serialized by hand.",
+    annotations: {
+      title: "Export Bedrock Animations",
+      destructiveHint: false,
+      openWorldHint: true,
+    },
+    parameters: bedrockExportAnimationsParameters,
     status: STATUS_EXPERIMENTAL,
   },
 ];
@@ -268,4 +295,71 @@ export function registerExportTools() {
       );
     },
   }, exportToolDocs[1].status);
+
+  createTool(exportToolDocs[2].name, {
+    ...exportToolDocs[2],
+    async execute({ animations, path }: { animations: string[]; path: string }) {
+      if (!Project) {
+        throw new Error(
+          "No project is open. Use `create_project` or open a project first."
+        );
+      }
+      if (!PathModule.isAbsolute(path)) {
+        throw new Error("path must be an absolute filesystem path.");
+      }
+      const target = PathModule.resolve(path);
+      if (PathModule.extname(target).toLowerCase() !== ".json") {
+        throw new Error("path must name a .json file.");
+      }
+
+      // libdom's Animation shadows Blockbench's class in the type definitions.
+      const all = (Animation as unknown as typeof _Animation).all;
+      const selected = animations.map((id) =>
+        all.find((a) => a.uuid === id || a.name === id)
+      );
+      const missing = animations.filter((_, index) => !selected[index]);
+      if (missing.length > 0) {
+        const available = all.map((a) => a.name).join(", ") || "none";
+        throw new Error(
+          `Animation(s) not found in the bound project: ${missing.join(", ")}. Available: ${available}.`
+        );
+      }
+
+      // @ts-ignore - AnimationCodec is a Blockbench global
+      const codec = (typeof AnimationCodec === "undefined" ? undefined : AnimationCodec)
+        ?.codecs?.bedrock as { compileFile?: (list: _Animation[]) => unknown } | undefined;
+      if (typeof codec?.compileFile !== "function") {
+        throw new Error("This Blockbench build has no native Bedrock animation codec (AnimationCodec.codecs.bedrock.compileFile).");
+      }
+      const compiled = await codec.compileFile(selected as _Animation[]);
+      // @ts-ignore - autoStringify is a Blockbench global honoring the user's JSON style
+      const text: string = typeof autoStringify === "function" ? autoStringify(compiled) : JSON.stringify(compiled, null, 2);
+
+      const directory = PathModule.dirname(target);
+      // @ts-ignore - requireNativeModule is a Blockbench global
+      const fs = requireNativeModule("fs", {
+        scope: directory,
+        message: `MCP bedrock_export_animations requested write access to save animations to ${target}`,
+      }) as any;
+      if (!fs) throw new Error("File system access was denied.");
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(target, text, "utf8");
+
+      return JSON.stringify(
+        {
+          path: target,
+          byte_length: Buffer.byteLength(text, "utf8"),
+          format_version: (compiled as { format_version?: string } | null)?.format_version ?? null,
+          animations: (selected as _Animation[]).map((a) => ({
+            uuid: a.uuid,
+            name: a.name,
+            length: a.length,
+            loop: a.loop,
+          })),
+        },
+        null,
+        2
+      );
+    },
+  }, exportToolDocs[2].status);
 }

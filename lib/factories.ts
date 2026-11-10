@@ -120,7 +120,13 @@ const globalTools = new Set([
 ]);
 
 /** Tools that bind a project rather than operate on the bound one. */
-const bindingTools = new Set(["create_project", "select_project", "list_projects"]);
+const bindingTools = new Set(["create_project", "select_project", "list_projects", "close_project"]);
+
+/** Tools that activate or close projects themselves, so the bound project must not be locked. */
+const projectSwitchingTools = new Set(["create_project", "close_project"]);
+
+/** Binding tools that only consult project ownership, so no project needs to be activated for them. */
+const editorFreeTools = new Set(["select_project", "list_projects"]);
 
 /**
  * How long a call may wait behind other agents before failing with a "busy" error.
@@ -161,7 +167,8 @@ async function executeTool(name: string, definition: ToolDefinition, args: unkno
     workspaceId,
     requireProject: !bindingTools.has(name),
     requireExplicitWorkspace: true,
-    allowProjectSwitch: name === "create_project",
+    allowProjectSwitch: projectSwitchingTools.has(name),
+    usesEditor: !editorFreeTools.has(name),
     queueTimeoutMs: QUEUE_WAIT_TIMEOUT_MS,
     label: name,
   }, async workspace => {
