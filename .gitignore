@@ -2,3 +2,37 @@ node_modules
 dist/
 .claude
 nul
+
+# 环境变量 / 密钥
+.env
+.env.*
+!.env.example
+
+# 日志与调试
+*.log
+bun-debug.log*
+npm-debug.log*
+
+# 构建与测试产物
+*.tsbuildinfo
+coverage/
+staging/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器 / AI 工具的本地配置
+.idea/
+*.swp
+.vscode/*
+!.vscode/extensions.json
+!.vscode/mcp.json
+.cursor/
+.codex/
+*.local.json
+
+# 本地测试导出的模型
+/*.bbmodel
+/exports/
